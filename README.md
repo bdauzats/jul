@@ -294,6 +294,51 @@ Not yet measured — do not rely on these without checking:
   `Context(examples=…)`, for both models — 200 examples per strategy though, so ±3.5 points.
 - Everything was tuned in English.
 
+## Next steps
+
+### Images and video, with Qwen
+
+`qwen3.5-9b` is a multimodal checkpoint. Its config declares a vision tower of 27 blocks, an
+`image_token_id` and a `video_token_id` — and the weights are already on your disk: **333
+`vision_tower.*` tensors**, part of the 11 GB the preset downloads. They are never loaded.
+`mlx_lm.load()` instantiates the language model alone (`children()` returns `['language_model']`),
+which is exactly why `backbone.py` reaches through the multimodal wrapper to find the text model.
+
+The method should transpose. The state vector and the option vectors meet in the same residual
+stream, at the same position, so the cosine stays defined whether the state arrived as text or as
+pixels — the trick CLIP plays across two aligned encoders, except here the model does the fusion
+itself and the options stay plain text.
+
+What it would take:
+
+- load through `mlx-vlm` rather than `mlx-lm`, to instantiate the vision tower and the processor;
+- **measure everything again**: an image-conditioned hidden state has a different distribution, so the
+  center, `tau` and most likely the layer all have to be refitted;
+- rewrite the formulations — `This text: "…" means in one word:` is absurd in front of a photograph;
+- accept the latency. One image is hundreds of visual tokens on top of 27 tower blocks. Still a
+  single pass with nothing generated, but the "four times faster than the hosted option" argument
+  would not survive it.
+
+The prefix cache does survive: the prefix stays text and the image takes the state's place.
+
+`minicpm5-2b` is out of this — `model_type: llama`, no vision config, no image preprocessor.
+
+And the honest question is the same one as for text: a small vision model trained on your own images
+would probably do as well for a fraction of the cost. ResNet plus a logistic regression has been the
+image equivalent of TF-IDF for a decade, and it deserves the same benchmark row before anything else
+is built.
+
+### Smaller leads, already measured
+
+- **A generic center for the `question + options` formulation.** Worth about 2.5 points on MiniCPM
+  (0.560 against 0.535), but it depends on the question, so it costs 195 extra passes every time a
+  new question appears. Left off: a `Context` with fifty examples is cheaper and scores better.
+- **Banking77, zero-shot.** This is where the whole gap with the hosted option sits: 0.74 against
+  0.87, on 72 fine-grained intents. `autotune(...)` closes most of it; nothing else has.
+- **One batch instead of two passes.** The two formulations run one after the other. Batching them
+  should cut latency without touching a single accuracy figure.
+- **English only.** Every layer, temperature and center here was fitted on English text.
+
 ## Layout
 
 ```
