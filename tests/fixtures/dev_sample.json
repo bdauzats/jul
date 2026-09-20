@@ -1,0 +1,382 @@
+[
+ {
+  "dataset": "financialphrasebank",
+  "labels": [
+   "The sentiment in this example is negative from an investor's perspective.",
+   "The sentiment in this example is neutral from an investor's perspective.",
+   "The sentiment in this example is positive from an investor's perspective."
+  ],
+  "rows": [
+   {
+    "text": "Export declined by 6 percent to 16.4 million liters .",
+    "target_index": 0
+   },
+   {
+    "text": "The deliveries are scheduled for the summer and autumn of 2008 .",
+    "target_index": 1
+   },
+   {
+    "text": "The talks are aimed at restructuring operations and cutting costs .",
+    "target_index": 2
+   },
+   {
+    "text": "The fair value of the company 's investment properties went down to EUR 2.768 billion at the end of 2009 from EUR 2.916 billion a year earlier .",
+    "target_index": 0
+   },
+   {
+    "text": "`` There is no room to modify the share component as we have already indicated . ''",
+    "target_index": 1
+   },
+   {
+    "text": "TELE2 Affarsvarlden gave a `` buy '' recommendation on mobile operator Tele2 AB and a share price target of 142 crowns ( $ 23.54 - 15.19 euro ) .",
+    "target_index": 2
+   },
+   {
+    "text": "Vanhanen said the strike would be `` extremely damaging '' as some 1,300 participants and reporters begin to arrive in Finland for the one-day EU summit with Russian President Vladimir Putin in Lahti , about 100 kilometers ( 60 miles ) north of Helsinki .",
+    "target_index": 0
+   },
+   {
+    "text": "Okmetic closed its plant in Espoo in early 2004 , and all production lines from the site were moved to Okmetic 's plants in Vantaa , Finland and Texas , USA .",
+    "target_index": 1
+   },
+   {
+    "text": "The company will make its marketing and sales investments initiated in 2009 even more efficient in 2010 .",
+    "target_index": 2
+   },
+   {
+    "text": "Operating profit totalled EUR 1.22 mn , down from EUR 3.56 mn in the first quarter of 2008 .",
+    "target_index": 0
+   },
+   {
+    "text": "`` Because we 're a pension insurance company , we 're required to diversify and not put too much in one asset class .",
+    "target_index": 1
+   },
+   {
+    "text": "Sales in Latin America increased by 42 % to EUR 432mn , and a total of 8.7 mn mobile devices were sold in the area , representing an increase of 32 % from the corresponding period in 2009 .",
+    "target_index": 2
+   },
+   {
+    "text": "Profit for the period was EUR 10.9 mn , down from EUR 14.3 mn in 2009 .",
+    "target_index": 0
+   },
+   {
+    "text": "The terms and conditions of the Stock Option Scheme 2008 are available on the Company 's internet pages www.sanoma.com .",
+    "target_index": 1
+   },
+   {
+    "text": "Operating profit improved by 39.9 % to EUR 18.0 mn from EUR12 .8 mn .",
+    "target_index": 2
+   },
+   {
+    "text": "( ADP News ) - Feb 12 , 2009 - Finnish construction company Lemminkainen Oyj ( HEL : LEM1S ) said today its net profit decreased to EUR 63.5 million ( USD 81.1 m ) for 2008 from EUR 80.6 million for 2007 .",
+    "target_index": 0
+   },
+   {
+    "text": "Rental of building equipment accounted for 88 percent of the operating income .",
+    "target_index": 1
+   },
+   {
+    "text": "Finnish cutlery and hand tools maker Fiskars Oyj Abp ( HEL : FISAS ) said today its net profit rose to EUR 24.1 million ( USD 33.6 m ) in the third quarter of 2010 from EUR 17.9 million a year earlier .",
+    "target_index": 2
+   },
+   {
+    "text": "Profit before taxes amounted to EUR 56.5 mn , down from EUR 232.9 mn a year ago .",
+    "target_index": 0
+   },
+   {
+    "text": "The invention carries International Patent Publication No. .",
+    "target_index": 1
+   },
+   {
+    "text": "Earnings per share ( EPS ) were EUR0 .03 , up from the loss of EUR0 .083 .",
+    "target_index": 2
+   },
+   {
+    "text": "Earnings per share ( EPS ) amounted to a loss of EUR0 .05 .",
+    "target_index": 0
+   },
+   {
+    "text": "The customer is cooperative retailer Osuuskauppa Suur-Savo .",
+    "target_index": 1
+   },
+   {
+    "text": "Diluted earnings per share ( EPS ) rose to EUR 1.05 from EUR 0.64 .",
+    "target_index": 2
+   },
+   {
+    "text": "L&T 's net profit for the whole 2010 dropped to EUR 36 million from EUR 45 million for 2009 .",
+    "target_index": 0
+   },
+   {
+    "text": "From 2003 on , the emphasis of Kyro 's strategy has been on Glaston 's growth .",
+    "target_index": 1
+   },
+   {
+    "text": "Handelsbanken ranked before Local Cooperative Banks and Aktia in customer loyalty this time too , however .",
+    "target_index": 2
+   },
+   {
+    "text": "2009 3 February 2010 - Finland-based steel maker Rautaruukki Oyj ( HEL : RTRKS ) , or Ruukki , said today it slipped to a larger-than-expected pretax loss of EUR46m in the fourth quarter of 2009 from a year-earlier profit of EUR45m .",
+    "target_index": 0
+   },
+   {
+    "text": "A total of 15,000 new Citycon shares with a nominal value of EUR 1.35 per share were subscribed between 17 and 23 March 2006 exercising the A-B-C options based on the company 's stock option plan 1999 .",
+    "target_index": 1
+   },
+   {
+    "text": "In July-September 2008 , YIT 's net sales increased to EUR 970.8 mn , compared to EUR 906.8 mn in the corresponding period in 2007 .",
+    "target_index": 2
+   }
+  ],
+  "unlabeled": [
+   "The groups 's turnover for the full fiscal year is expected to show a slight increase from the previous fiscal year .",
+   "Operating loss totalled EUR 12.7 mn , compared to a profit of EUR 17.7 mn in the first half of 2008 .",
+   "The company said that the operations will be sold to a newly established company , CPS GmbH , where the present management of the plastics business is a co-owner .",
+   "This will bring cost savings of about EUR 3mn a year .",
+   "Sales of mid-strength beer decreased by 40 % .",
+   "The Bank is also examining the benefits of transferring the Swedish business to operate as a branch office so that the operations would be governed by Finland 's laws .",
+   "Both operating profit and sales for the three-month period increased , respectively from EUR0 .3 m and EUR13 .1 m , as compared to the corresponding period in 2005 .",
+   "The company 's annual loss amounted to EEK 18mn , compared to a profit of EEK 7.3 mn in 2008 .",
+   "CapMan made its initial investment in OneMed in June 2006 .",
+   "Fiskars has a strong portfolio of international brands , which include Fiskars , Iittala , Gerber , Silva and Buster .",
+   "Aspocomp has a large factory in China and a factory building project in India that was halted due to financing problems .",
+   "Thus the group 's balance sheet will have about EUR 25.8 million of goodwill , the company added .",
+   "`` Demand for sports equipment was good in 2005 .",
+   "Pretax loss totalled EUR 49.9 mn , compared to a loss of EUR 15.4 mn in the corresponding period in 2008 .",
+   "Amer , which bought Salomon from adidas in October , said the job cuts are aimed at boosting competitiveness .",
+   "Production capacity will increase from 36 000 to 85 000 tonnes per year and the raw material will continue to be recycled paper and board .",
+   "Finnish Scanfil , a systems supplier and contract manufacturer to the communications sector and the electronics industry , reports net sales of EUR 49.6 mn in the first quarter of 2009 , which are only a per cent smaller than in the corresponding period in 2008 .",
+   "In future , the plant will focus on the production of flange profiles for wind farm towers .",
+   "Net interest income totaled EUR 15.9 mn , compared to EUR 15.6 mn a year earlier .",
+   "The currency effect had a 3.0 pct , or 20 mln euro ( $ 31.3 mln ) , negative impact on the revenue .",
+   "FinancialWire ( tm ) , in cooperation with the Investrend Broadcast Syndicate , also provides complete , daily conference call and webcast schedules as a service to shareholders and investors via the FirstAlert ( tm ) Networks oeFirstAlert ( tm ) Daily .",
+   "`` We are delighted to announce our support for Intel based handheld platforms , the capabilities of which have made our development easier and faster .",
+   "The production is to be liquidated before June 2009 and 325 employees loose their jobs .",
+   "F-Secure reported that : - The first half of 2008 has seen a growing number of targeted malware attacks on individuals , companies , and organizations .",
+   "The economic occupancy rate of Sponda 's property portfolio rose to 91.2 % from 88.8 % in 2006 .",
+   "Comparable operating profit totaled EUR 4.7 mn , down from EUR 5.1 mn in the corresponding period in 2005 , representing 7.4 % of net sales .",
+   "It will be operated by Nokia , and supported by its Nokia NetAct network and service management system .",
+   "Operating profit rose from EUR 1.94 mn to EUR 2.45 mn .",
+   "Operating loss totalled EUR 3.2 mn , compared to a profit of EUR 7.2 mn in the third quarter of 2008 .",
+   "The company also appointed Leif Rosen head of the Special Plate unit which includes the quarto plate units in Degerfors , Sweden , and New Castle , USA , the unit in Willich , Germany , as well as Pressplate and Prefab in Avesta and Plate Service Centre Nordic in Degerfors ."
+  ]
+ },
+ {
+  "dataset": "massive",
+  "labels": [
+   "The example utterance is a query about alarms.",
+   "The intent of this example utterance is to remove an alarm.",
+   "The intent of the example utterance is to set an alarm.",
+   "The intent of the example utterance is to lower the volume.",
+   "The intent of this example utterance is to mute the volume.",
+   "The example utterance is related to audio volume.",
+   "The intent of this example utterance is turning the audio volume up.",
+   "The example utterance is a query about a calendar.",
+   "The intent of the example utterance is to remove something from a calendar.",
+   "The intent of this example utterance is to set something in a calendar.",
+   "The example utterance is a query about cooking.",
+   "This example utterance is about cooking recipies.",
+   "The example utterance is related to date time changes or conversion.",
+   "The intent of this example utterance is a datetime query.",
+   "The intent of this example utterance is adding an email address to contacts.",
+   "The example utterance is a query about emails.",
+   "The intent of this example utterance is to query contact details.",
+   "The intent of the example utterance is to send an email.",
+   "This example utterance is a general greet.",
+   "The intent of the example utterance is to hear a joke.",
+   "The intent of the example utterance is for an IoT device to start cleaning.",
+   "The intent of this example utterance is for an IoT device to make coffee.",
+   "The intent of this example utterance is changing the light.",
+   "The intent of the example utterance is to dim the lights.",
+   "The example utterance is related to turning the lights off.",
+   "The example utterance is related to turning the lights on.",
+   "The intent of this example utterance is to brighten lights.",
+   "The intent of this example utterance is turning an IoT device off.",
+   "The intent of the example utterance is to turn an IoT device on.",
+   "The example utterance is related to creating or adding to lists.",
+   "The example utterance is a query about a list.",
+   "The intent of this example utterance is to remove a list or remove something from a list.",
+   "The intent of this example utterance is signalling music dislike.",
+   "The example utterance is related to liking music.",
+   "The example utterance is a query about music.",
+   "The intent of the example utterance is to change music settings.",
+   "The example utterance is a query about the news.",
+   "The example utterance is related to playing audiobooks.",
+   "The intent of this example utterance is to start playing a game.",
+   "The intent of this example utterance is for an IoT device to play music.",
+   "The example utterance is related to playing podcasts.",
+   "The intent of the example utterance is to play something on the radio.",
+   "This example utteranceis about currencies.",
+   "The example utterance is a query about a definition.",
+   "The example utterance is a factoid question.",
+   "The example utterance is a question about maths.",
+   "This example utterance is about stocks.",
+   "This example utterance is about event recommendations.",
+   "The intent of this example utterance is receiving recommendations for good locations.",
+   "This example utterance is about movie recommendations.",
+   "The example utterance is about social media posts.",
+   "The example utterance is a query about a social network.",
+   "The intent of this example utterance is to order takeaway food.",
+   "This example utterance is about takeaway food.",
+   "The example utterance is a query about transport or travels.",
+   "The intent of this example utterance is to get a taxi.",
+   "This example utterance is about transport tickets.",
+   "This example utterance is about transport or traffic.",
+   "This example utterance is a query about the wheather."
+  ],
+  "rows": [
+   {
+    "text": "do i have any alarms set for six am tomorrow",
+    "target_index": 0
+   },
+   {
+    "text": "get rid of my current alarms",
+    "target_index": 1
+   },
+   {
+    "text": "set an alarm for six thirty am",
+    "target_index": 2
+   },
+   {
+    "text": "speak softer please",
+    "target_index": 3
+   },
+   {
+    "text": "can you please stop speaking",
+    "target_index": 4
+   },
+   {
+    "text": "where is volume setting",
+    "target_index": 5
+   },
+   {
+    "text": "speak loudly",
+    "target_index": 6
+   },
+   {
+    "text": "where is mary's birthday party being held",
+    "target_index": 7
+   },
+   {
+    "text": "please clear my calendar",
+    "target_index": 8
+   },
+   {
+    "text": "alert me at the time of the event",
+    "target_index": 9
+   },
+   {
+    "text": "how do i make a turkey",
+    "target_index": 11
+   },
+   {
+    "text": "time between us and canada",
+    "target_index": 12
+   },
+   {
+    "text": "current time in japan",
+    "target_index": 13
+   },
+   {
+    "text": "please place my new email address to the contact",
+    "target_index": 14
+   },
+   {
+    "text": "any lighting news emails",
+    "target_index": 15
+   },
+   {
+    "text": "check mom's number",
+    "target_index": 16
+   },
+   {
+    "text": "compose an email to bob",
+    "target_index": 17
+   },
+   {
+    "text": "what's up olly",
+    "target_index": 18
+   },
+   {
+    "text": "send a giggle my way",
+    "target_index": 19
+   },
+   {
+    "text": "initialize the robot vacuum",
+    "target_index": 20
+   },
+   {
+    "text": "can you set my coffee machine to make me coffee at seven am",
+    "target_index": 21
+   },
+   {
+    "text": "make the light in here redder",
+    "target_index": 22
+   },
+   {
+    "text": "lower the lights",
+    "target_index": 23
+   },
+   {
+    "text": "turn off overhead light",
+    "target_index": 24
+   },
+   {
+    "text": "and the darkness has fallen",
+    "target_index": 25
+   },
+   {
+    "text": "can you turn up the lights",
+    "target_index": 26
+   },
+   {
+    "text": "disable my okug",
+    "target_index": 27
+   },
+   {
+    "text": "turn the smart plug on",
+    "target_index": 28
+   },
+   {
+    "text": "add business contacts to contact list",
+    "target_index": 29
+   },
+   {
+    "text": "give me all available lists",
+    "target_index": 30
+   }
+  ],
+  "unlabeled": [
+   "erase all",
+   "i hate this song",
+   "save my opinion on adele's song",
+   "who is the singer of song",
+   "move to the next song in the list",
+   "yesterday at noontime in times square what was the protest about",
+   "can you play my favorite audio book of tarzan",
+   "start a competitive crossword for us",
+   "play songs by barenaked ladies",
+   "play last libertarian podcast",
+   "listen to radio",
+   "what's euro u. s. d. right now",
+   "describe hell",
+   "what color are chairs",
+   "what is one plus one",
+   "what is the stock price of hdfc",
+   "olly tell me about activities in my area this weekend",
+   "give the list of theaters in the vicinity",
+   "look up movies near me",
+   "post my latest entry to twitter at n.s.a.",
+   "has anyone commented on my status",
+   "i feel like having soup for lunch order from wangs kitchen restaurant a chicken manchow soup",
+   "is dinner ready yet",
+   "how do i get to the mall",
+   "uber me to the airport",
+   "google train tickets to washington d. c.",
+   "traffic report",
+   "will i need sunscreen this afternoon",
+   "what times are my alarms set for",
+   "olly cancel all soccer practice alarms"
+  ]
+ }
+]

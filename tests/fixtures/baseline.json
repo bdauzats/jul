@@ -1,0 +1,22 @@
+{
+ "minicpm5-2b": {
+  "financialphrasebank": {
+   "acc": 0.833,
+   "p50_ms": 82.4
+  },
+  "massive": {
+   "acc": 0.7,
+   "p50_ms": 59.7
+  }
+ },
+ "qwen3.5-9b": {
+  "financialphrasebank": {
+   "acc": 0.8,
+   "p50_ms": 350.7
+  },
+  "massive": {
+   "acc": 0.767,
+   "p50_ms": 182.3
+  }
+ }
+}

@@ -1,0 +1,17 @@
+# Models are never committed: mlx-lm downloads them into ~/.cache/huggingface on first use.
+# Data, features and results are reproducible with scripts/ — see README.
+data/
+external/
+features/
+runs/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.venv/
+
+# macOS and editors
+.DS_Store
+._*
+.idea/
+.vscode/
+*.swp
