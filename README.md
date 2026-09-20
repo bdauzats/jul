@@ -116,6 +116,22 @@ The full published benchmark, 300 examples, run through this library (`scripts/b
 | `qwen3.5-9b` + context (50 unlabeled)  |     0.91 |      0.78 |     0.55 |     0.747 |     0.096 |    242 ms |
 | `minicpm5-2b` + context (50 unlabeled) |     0.84 |      0.63 |     0.47 |     0.647 |     0.140 |     65 ms |
 
+### The baseline worth remembering
+
+Before any of this earns its cost, here is what a bag of words does on the same 300 rows, trained on
+the same 1000 labeled examples, with no LLM at all (`scripts/bench_tfidf.py`):
+
+| No LLM | AG News | Banking77 | Emotion | Mean | p50 | Training |
+|---|---:|---:|---:|---:|---:|---:|
+| TF-IDF + linear SVM | 0.88 | 0.76 | 0.43 | **0.690** | **0.17 ms** | 0.1 s on CPU |
+
+It is 6.3 points behind Jev at roughly **1400× lower latency**, and it beats the zero-shot LLM
+outright. It loses on one dataset only — Emotion, where recognising a feeling needs meaning rather
+than vocabulary. That is exactly, and only, where the model earns its keep.
+
+If you have labels and your task looks like topic or intent sorting, try this first. It takes a
+minute and it may be the end of the story.
+
 Read honestly:
 
 - **Zero-shot, jul beats GLiNER and stays 9 points behind Jev.** Almost all of that gap is Banking77
@@ -354,6 +370,7 @@ training row appears in it, then runs the three variants **through the public AP
 ```bash
 python scripts/bench_jul.py minicpm5-2b                # (~7 min)
 python scripts/bench_jul.py qwen3.5-9b                 # (~25 min)
+python scripts/bench_tfidf.py                          # the no-LLM baseline (~5 s)
 ```
 
 Reports land in `runs/jev-bench-jul/`. Tune on the dev datasets, and run the benchmark once, at the

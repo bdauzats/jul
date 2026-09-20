@@ -1,13 +1,15 @@
 # Models are never committed: mlx-lm downloads them into ~/.cache/huggingface on first use.
-# Data, features and results are reproducible with scripts/ — see README.
-data/
-external/
-features/
-runs/
+# The directories below are reproducible with scripts/ — see README > Reproducing.
+# No trailing slash: these must also catch symlinks pointing outside the repo.
+/data
+/external
+/features
+/runs
+
 *.egg-info/
 __pycache__/
 .pytest_cache/
-.venv/
+.venv*/
 
 # macOS and editors
 .DS_Store
