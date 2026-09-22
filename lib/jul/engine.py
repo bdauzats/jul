@@ -129,13 +129,17 @@ class Engine:
         h, _ = template.run(text, layers=[layer])
         return h[layer][: h[layer].shape[0] // 2]
 
+    def vectors(self, template: PromptTemplate, layer: int, texts: list[str]) -> np.ndarray:
+        """`vector` for each text, (n, d), read in batches when the backend supports it."""
+        return np.stack([h[layer][: h[layer].shape[0] // 2] for h in template.run_batch(texts, layers=[layer])])
+
     def _center(self, template: PromptTemplate, formulation: Formulation, options_matrix: np.ndarray,
                 context) -> np.ndarray:
         texts = getattr(context, "examples", None) if context is not None else None
         if texts:
             cached = context.center_for(self.backbone.key, formulation)
             if cached is None:
-                cached = np.mean([self.vector(template, formulation.layer, t) for t in texts], axis=0)
+                cached = self.vectors(template, formulation.layer, texts).mean(0)
                 context.set_center(self.backbone.key, formulation, cached)
             return cached
         if self.preset.center == "generic":
@@ -158,7 +162,7 @@ class Engine:
             shared = "{instructions}" not in f.template
             template = (self._one_word_template(f, _description(context)) if shared
                         else self._template(self._render(f, instructions, options), _description(context)))
-            L = np.stack([self.vector(template, f.layer, o.text) for o in options])
+            L = self.vectors(template, f.layer, [o.text for o in options])
             center = self._center(template, f, L, context)
             passes.append(Pass(f, template, normalize(L - center), center, len(template.prefix_tokens)))
 
@@ -193,6 +197,15 @@ class Engine:
             scores.append(p.scores(vector))
             features.append(normalize(vector - p.center))
         return np.mean(scores, axis=0), np.concatenate(features), tokens
+
+    def read_many(self, compiled: CompiledQuestion, states: list[str]) -> tuple[np.ndarray, np.ndarray]:
+        """`read` for many states at once: (scores (n, K), features (n, D)), without the token count."""
+        scores, features = [], []
+        for p in compiled.passes:
+            centered = normalize(self.vectors(p.template, p.formulation.layer, states) - p.center)
+            scores.append(centered @ p.centered_options.T)
+            features.append(centered)
+        return np.mean(scores, axis=0), np.concatenate(features, axis=-1)
 
     def vector_probabilities(self, compiled: CompiledQuestion, state: str, tau: float | None = None,
                              shared=None) -> tuple[np.ndarray, np.ndarray, int]:

@@ -198,12 +198,7 @@ class TypeSafeClient:
                 raise ValueError(f"question {name!r} has fewer than 2 labeled examples")
 
             compiled = engine.compile(kind, question.instructions, options, ctx)
-            scores, features = [], []
-            for i, _ in rows:
-                s, f, _ = engine.read(compiled, states[i], None)
-                scores.append(s)
-                features.append(f)
-            scores, features = np.stack(scores), np.stack(features)
+            scores, features = engine.read_many(compiled, [states[i] for i, _ in rows])
             y = np.array([label for _, label in rows])
 
             digest = self._digest(kind, question, options)

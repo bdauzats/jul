@@ -145,13 +145,9 @@ def _template(backbone: Backbone, text: str, **kw) -> PromptTemplate:
 
 
 def _vectors(template: PromptTemplate, layers: list[int], texts: list[str]) -> dict[int, np.ndarray]:
-    """{layer: (n, d)} last-token vectors, all layers read in one pass per text."""
-    out = {l: [] for l in layers}
-    for text in texts:
-        h, _ = template.run(text, layers=layers)
-        for l in layers:
-            out[l].append(h[l][: h[l].shape[0] // 2])
-    return {l: np.stack(v) for l, v in out.items()}
+    """{layer: (n, d)} last-token vectors, all layers read in one pass per batch of texts."""
+    features = template.run_batch(texts, layers=layers)
+    return {l: np.stack([h[l][: h[l].shape[0] // 2] for h in features]) for l in layers}
 
 
 def _question_options(labels: list[str]) -> str:
