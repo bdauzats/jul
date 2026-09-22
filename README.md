@@ -212,15 +212,26 @@ many options a question has. It is not built in: `jul models add` registers it i
 
 ## Results
 
-The full published benchmark, 300 examples, run through this library (`scripts/bench_jul.py`).
-**Only the zero-shot block compares to Jev** — the other rows receive task data and Jev receives none.
+The full published benchmark, 300 examples, run through this library (`scripts/bench_jul.py`, and
+`bench_jul_decision.py` for the decision model). **Only the zero-shot block compares to Jev** — the
+rows below it receive task data at call time and Jev receives none.
 
-| Zero-shot             |  AG News | Banking77 | Emotion |      Mean |     ECE ↓ |       p50 |
-| --------------------- | -------: | --------: | ------: | --------: | --------: | --------: |
-| Jev (published)       | **0.91** |  **0.87** |    0.48 | **0.753** |     0.156 |    246 ms |
-| jul `qwen3.5-9b`      |     0.79 |      0.74 |    0.45 |     0.660 |     0.175 |    273 ms |
-| jul `minicpm5-2b`     |     0.80 |      0.59 |    0.46 |     0.617 | **0.113** | **64 ms** |
-| GLiNER2.5 (published) |     0.70 |      0.61 |    0.44 |     0.583 |     0.101 |    128 ms |
+| Zero-shot                      |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |       p50 |
+| ------------------------------ | -------: | --------: | -------: | --------: | --------: | --------: |
+| jul `minicpm5-2b-decision` ¹   |     0.91 |      0.79 | **0.69** | **0.796** |     0.133 |    217 ms |
+| Jev (published)                | **0.91** |  **0.87** |     0.48 |     0.753 |     0.156 |    246 ms |
+| jul `qwen3.5-9b`               |     0.79 |      0.74 |     0.45 |     0.660 |     0.175 |    273 ms |
+| jul `minicpm5-2b`              |     0.80 |      0.59 |     0.46 |     0.617 | **0.113** | **64 ms** |
+| GLiNER2.5 (published)          |     0.70 |      0.61 |     0.44 |     0.583 |     0.101 |    128 ms |
+
+Zero-shot means no example of the task at call time: every row here gets the text, the question and the
+option list, nothing else. The first two rows are models *trained* to decide, the next two are general
+LLMs read without training, and GLiNER is a trained zero-shot tagger.
+
+¹ `minicpm5-2b-decision` learned these three tasks during training, on their training splits (the
+benchmark rows come from the test splits). Jev's training data is not published, so whether it saw them
+too is unknown. On six sources neither it nor Kev ever trained on, it scores 0.721 against Jev's 0.857:
+see [the development sets](#the-decision-model-on-the-development-sets).
 
 | With task data (not comparable)        |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |       p50 |
 | -------------------------------------- | -------: | --------: | -------: | --------: | --------: | --------: |
@@ -247,8 +258,11 @@ minute and it may be the end of the story.
 
 Read honestly:
 
-- **Zero-shot, jul beats GLiNER and stays 9 points behind Jev.** Almost all of that gap is Banking77
-  and its 72 fine-grained intents (0.74 vs 0.87); on AG News and Emotion the gap is 2 to 12 points.
+- **The decision model passes Jev on the mean (0.796 against 0.753)**, and it is the only row here
+  trained for this job, like Jev. See footnote ¹ before reading it as a like-for-like win.
+- **Read without training, jul beats GLiNER and stays 9 points behind Jev.** Almost all of that gap is
+  Banking77 and its 72 fine-grained intents (0.74 vs 0.87); on AG News and Emotion the gap is 2 to 12
+  points.
 - **jul is better calibrated than Jev** nearly everywhere. On Emotion Jev's ECE is 0.351: more often
   right, but badly overconfident.
 - **With 1000 labeled examples, the small model is enough**: MiniCPM reaches 0.757 at 65 ms, Jev's
@@ -260,8 +274,7 @@ first use, one at a time (Qwen3.5-9B is about 5.5 GB).
 
 ### The decision model, on the development sets
 
-`minicpm5-2b-decision` learned the benchmark's three tasks during training, so its benchmark row lives
-in [its own block](#the-decision-model-on-the-jev-benchmark) below. Here are the four development sets
+Here are the four development sets
 (BTZSC, 200 examples each), both models read through this library (`scripts/dev_decision_jul.py` in the
 research repo), on an M4 Pro (24 GB) on mains power:
 
@@ -289,26 +302,14 @@ Cells are accuracy / ECE (lower is better) / p50 latency.
   never trained on: 0.721, against 0.652 for Kev-0.8B and 0.797 for Kev-4B; Jev 0.857).
 ### The decision model, on the Jev benchmark
 
-Same 300 rows, same metrics (`scripts/bench_jul_decision.py` in the research repo).
+Its row sits in the table above, measured on the same 300 rows with the same metrics
+(`scripts/bench_jul_decision.py` in the research repo). Read honestly:
 
-| Model                      |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |    p50 |
-| -------------------------- | -------: | --------: | -------: | --------: | --------: | -----: |
-| jul `minicpm5-2b-decision` | **0.91** |      0.79 | **0.69** | **0.796** | **0.133** | 217 ms |
-| Jev (published)            |     0.90 |  **0.86** |     0.48 |     0.747 |     0.156 | 246 ms |
-| GLiNER2.5 (published)      |     0.66 |      0.57 |     0.41 |     0.545 |     0.101 | 128 ms |
-
-This model learned all three tasks during training, as Kev's did; Jev gets no task data. Which is why
-the row sits here and not in the zero-shot tables above.
-
-Read honestly:
-
-- **The whole gain is Emotion** (0.69 against 0.48), one of the tasks it learned. Scoring well on a task
-  you trained on says nothing about the next one.
-- **Banking77 stays 7 points behind Jev (0.79 against 0.86) although it was trained on it.** Seventy-two
-  fine-grained intents remain the hard part — the vector method scores 0.59 there.
-- AG News is a tie. Calibration is better than Jev's (0.133 against 0.156) and latency comparable.
-- What to take from the block above instead: on sources it has **never** seen (Kev's `transfer-v4`), it
-  scores 0.721 where Jev scores 0.857.
+- **Emotion is where it wins** (0.69 against 0.48), and Emotion is one of the tasks it trained on.
+- **Banking77 stays 8 points behind Jev (0.79 against 0.87) although it trained on that one too.**
+  Seventy-two fine-grained intents remain the hard part — the vector method scores 0.59 there.
+- AG News is a tie, calibration is better than Jev's (0.133 against 0.156) and latency comparable.
+- It is 3× slower than `minicpm5-2b` here, because Banking77's 72 options are re-read on every request.
 
 ## Context — what the data looks like
 
