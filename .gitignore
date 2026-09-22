@@ -5,6 +5,7 @@
 /external
 /features
 /runs
+/tasks
 
 *.egg-info/
 __pycache__/

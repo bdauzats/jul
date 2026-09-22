@@ -71,7 +71,8 @@ def cmd_bench(a):
         run_dir = _run_dir(task, model, None)
         rows = []
         no_cache = Prompts(bb, task, use_prefix_cache=False)
-        rows.append(("A  logits (no prefix cache)", lambda t: no_cache.options.run(t, logits=True)))
+        rows.append(("A  logits (no prefix cache)",
+                     lambda t, p=no_cache: p.options.run(t, logits=True)))
         rows.append(("A  logits", LogitDecider(bb, task).decide))
         for variant in ("probe-plain", "probe-options", "hybrid-plain", "hybrid-options"):
             if (run_dir / variant).exists():

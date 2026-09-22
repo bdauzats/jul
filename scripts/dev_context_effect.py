@@ -16,7 +16,6 @@ import sys
 import time
 from pathlib import Path
 
-import mlx.core as mx
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -92,7 +91,8 @@ for ds, description in DESCRIPTIONS.items():
             else:
                 pack[name]["default"] = pack[name]["L"].mean(0)
 
-        def accuracy(center_of) -> float:
+        # pack and y are bound as defaults: the closure must never see a later iteration's values.
+        def accuracy(center_of, pack=pack, y=y) -> float:
             total = sum(nrm(p["X"] - center_of(p)) @ nrm(p["L"] - center_of(p)).T for p in pack.values())
             return float(((total / len(pack)).argmax(1) == y).mean())
 

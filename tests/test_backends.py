@@ -2,6 +2,7 @@
 backend (centers, heads, calibrations) is silently reused by another."""
 
 import importlib.util
+import os
 
 import numpy as np
 import pytest
@@ -54,18 +55,22 @@ def test_a_backend_without_its_own_generic_center_falls_back_to_the_mlx_one():
     assert np.array_equal(preset.generic_center(f, "torch"), preset.generic_center(f))
 
 
-# --- torch against MLX, on the same model ---------------------------------------------------------
+# --- the torch backend on its own -----------------------------------------------------------------
+#
+# These need torch but NOT MLX, so CI (Linux, no Apple Silicon) runs them on every push. The model is
+# small on purpose: `JUL_TEST_MODEL` overrides it, the default is ~1.2 GB in bf16.
 
 def cosine(a, b):
     return float(a @ b / np.linalg.norm(a) / np.linalg.norm(b))
 
 
+SMALL = os.environ.get("JUL_TEST_MODEL", "qwen3-0.6b")
+
+
 @pytest.fixture(scope="module")
-def pair():
-    """The same bf16 weights on both sides: the preset's MLX repo is 4-bit, which alone moves the
-    vectors to a cosine of ~0.95 with the bf16 ones."""
+def small_torch():
     from jul.backbone import Backbone
-    return Backbone("openbmb/MiniCPM5-2B", "mlx"), Backbone("minicpm5-2b", "torch")
+    return Backbone(SMALL, "torch")
 
 
 def vectors(backbone, layer, **kw):
@@ -80,6 +85,60 @@ def vectors(backbone, layer, **kw):
 
 @pytest.mark.slow
 @pytest.mark.torch
+@pytest.mark.skipif(not HAS_TORCH, reason="torch is not installed")
+def test_the_torch_prefix_cache_is_a_pure_speed_up(small_torch):
+    """The cached prefix must be a pure optimisation, at every depth.
+
+    `cache_prefix` runs the whole stack, while a query stops at its layer: the crop that follows must
+    leave the prefix intact for the layers above the stop as well. Checked from a quarter of the depth
+    to the last layer, because only the last one was exercised before.
+    """
+    for layer in sorted({max(0, round(f * small_torch.n_layers) - 1) for f in (0.25, 0.5, 0.75, 1.0)}):
+        cached = vectors(small_torch, layer)
+        plain = vectors(small_torch, layer, use_prefix_cache=False)
+        assert min(cosine(x, y) for x, y in zip(cached, plain)) > 0.999, f"layer {layer}"
+        # the cache is back to the prefix: a second identical call reads the same vectors
+        assert np.allclose(vectors(small_torch, layer), cached, atol=1e-3), f"layer {layer}"
+
+
+@pytest.mark.slow
+@pytest.mark.torch
+@pytest.mark.skipif(not HAS_TORCH, reason="torch is not installed")
+def test_the_torch_prefix_cache_does_not_drift_over_many_calls(small_torch):
+    """Queries of varying length through one template: state must not accumulate."""
+    layer = small_torch.n_layers // 2
+    prefix, suffix = ONE_WORD.split("{state}")
+    template = PromptTemplate(small_torch, prefix, suffix)
+    first, _ = template.run(TEXTS[0], layers=[layer])
+    for i in range(20):
+        template.run(TEXTS[i % len(TEXTS)] + " " + "x " * (i % 7), layers=[layer])
+    last, _ = template.run(TEXTS[0], layers=[layer])
+    assert np.allclose(first[layer], last[layer], atol=1e-3)
+
+
+@pytest.mark.slow
+@pytest.mark.torch
+@pytest.mark.skipif(not HAS_TORCH, reason="torch is not installed")
+def test_a_model_passes_the_calibration_checks_on_torch(small_torch):
+    """`jul models add` refuses to fit a model that fails these: they are the backend's contract."""
+    from jul.calibrate import check
+    assert check(small_torch, small_torch.n_layers - 1) == []
+
+
+# --- torch against MLX, on the same model ---------------------------------------------------------
+#
+# Apple Silicon only: both frameworks must be installed and the weights are the 2B ones.
+
+@pytest.fixture(scope="module")
+def pair():
+    """The same bf16 weights on both sides: the preset's MLX repo is 4-bit, which alone moves the
+    vectors to a cosine of ~0.95 with the bf16 ones."""
+    from jul.backbone import Backbone
+    return Backbone("openbmb/MiniCPM5-2B", "mlx"), Backbone("minicpm5-2b", "torch")
+
+
+@pytest.mark.slow
+@pytest.mark.torch
 @pytest.mark.skipif(not (HAS_TORCH and HAS_MLX), reason="needs both backends")
 def test_torch_reads_the_same_vectors_as_mlx(pair):
     mlx, torch = pair
@@ -87,16 +146,6 @@ def test_torch_reads_the_same_vectors_as_mlx(pair):
     for layer in resolve("minicpm5-2b").layers:
         a, b = vectors(mlx, layer), vectors(torch, layer)
         assert min(cosine(x, y) for x, y in zip(a, b)) > 0.999
-
-
-@pytest.mark.slow
-@pytest.mark.torch
-@pytest.mark.skipif(not HAS_TORCH, reason="torch is not installed")
-def test_the_torch_prefix_cache_is_a_pure_speed_up(pair):
-    _, torch = pair
-    cached, plain = vectors(torch, 39), vectors(torch, 39, use_prefix_cache=False)
-    assert min(cosine(x, y) for x, y in zip(cached, plain)) > 0.999
-    assert np.allclose(vectors(torch, 39), cached, atol=1e-3)   # the cache is back to the prefix
 
 
 @pytest.mark.slow

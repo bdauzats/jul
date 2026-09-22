@@ -1,0 +1,101 @@
+name: CI
+
+# Three questions, answered on every push:
+#   1. does the package install and pass its tests with NO backend at all?
+#   2. does the torch backend read the right vectors, on a real model, on Linux?
+#   3. is the lint clean on the rules that catch bugs (not on style)?
+#
+# MLX cannot run here (GitHub has no Apple Silicon runners in the free tier), so the MLX-only tests
+# stay skipped and say so. That is the honest scope of this file.
+
+on:
+  push:
+    branches: [main, backends]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUNBUFFERED: "1"
+  HF_HUB_DISABLE_PROGRESS_BARS: "1"
+
+jobs:
+  # 1. The install a newcomer actually does: no backend extra. Constructing a client, loading a
+  #    preset and reading a context must all work without mlx or torch installed.
+  no-backend:
+    name: tests without a backend (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install (no backend extra)
+        run: pip install -e ".[dev,yaml]"
+      - name: Neither backend must be importable
+        run: |
+          python - <<'PY'
+          import importlib.util as u
+          assert u.find_spec("mlx") is None, "mlx leaked into the no-backend job"
+          assert u.find_spec("torch") is None, "torch leaked into the no-backend job"
+          print("no backend installed, as intended")
+          PY
+      - name: Tests
+        run: pytest tests -q -rs
+
+  lint:
+    name: ruff (bug-catching rules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff==0.16.8
+      # F/E9 = real errors, B023/B904 = the two bug classes that bit this repo.
+      # Style (line length, import order) is deliberately NOT enforced.
+      - run: ruff check . --isolated --select F,E9,B023,B904 --line-length 120 --output-format=github
+
+  # 2. The torch backend against a real model. Small on purpose (~1.2 GB) so this stays a free-tier
+  #    job; the weights are cached between runs.
+  torch-backend:
+    name: torch backend on a real model
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - name: Install torch (CPU wheels)
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev,yaml,torch]"
+      - name: Cache the Hugging Face weights
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-qwen3-0.6b-v1
+      - name: Backend contract tests
+        env:
+          JUL_SLOW: "1"
+          JUL_BACKEND: torch
+          JUL_DEVICE: cpu
+          JUL_TEST_MODEL: qwen3-0.6b
+        run: pytest tests -m torch -q -rs
+      - name: The CLI runs end to end
+        env:
+          JUL_BACKEND: torch
+          JUL_DEVICE: cpu
+        run: |
+          jul models
+          jul ask --help
+          jul models add --help

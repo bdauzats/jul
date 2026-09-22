@@ -6,7 +6,6 @@ Writes data/generic/<dataset>.jsonl: up to N balanced rows {text, target_index, 
 import copy
 import json
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent

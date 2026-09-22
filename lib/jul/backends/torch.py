@@ -11,7 +11,6 @@ import copy
 import os
 from dataclasses import dataclass
 
-import numpy as np
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.cache_utils import DynamicCache, DynamicLayer

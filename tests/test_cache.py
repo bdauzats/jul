@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from jul import Choice, TypeSafeClient
+from jul import Choice
 from jul.backbone import Backbone, PromptTemplate
 from jul.engine import Engine
 from jul.presets import resolve
@@ -82,7 +82,6 @@ def test_option_vectors_are_computed_once_per_question(backbone):
 @pytest.mark.slow
 def test_the_one_word_vector_is_shared_by_the_questions_of_a_call(client):
     """Two questions cost less than twice one question, because the shared pass is computed once."""
-    from jul import Noul
     one = client.system_one(state="I was charged twice",
                             questions={"a": Choice(instructions="Which team?",
                                                    criteria={"billing": "payments", "tech": "bugs"})})

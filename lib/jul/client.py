@@ -46,7 +46,10 @@ class TypeSafeClient:
                  context_home: Path | None = None, api_key: str | None = None, base_url: str | None = None,
                  timeout: float | None = None, max_retries: int | None = None, **_ignored: Any):
         self._one_word_only = one_word_only
-        self._backend = resolve_backend(backend)
+        #: Resolved on the first call, not here: constructing a client must not need a backend
+        #: installed, nor load anything. `backend=` is remembered until then.
+        self._requested_backend = backend
+        self._backend: str | None = None
         self._preset = self._resolve_preset(model)
         self._engine: Engine | None = None
         self._context_home = context_home
@@ -55,15 +58,27 @@ class TypeSafeClient:
 
     # --- model handling -----------------------------------------------------------------------
 
+    @property
+    def backend(self) -> str:
+        """The backend, resolved on first access (and so on the first call)."""
+        if self._backend is None:
+            self._backend = resolve_backend(self._requested_backend)
+        return self._backend
+
     def _resolve_preset(self, model: str | None) -> Preset:
-        return (one_word_preset(model, self._backend) if self._one_word_only
-                else resolve(model, self._backend))
+        """Before the first call there may be no backend at all: fall back to the built-in preset."""
+        try:
+            backend = self.backend
+        except ImportError:
+            backend = None
+        return (one_word_preset(model, backend) if self._one_word_only
+                else resolve(model, backend))
 
     def _engine_for(self, model: str | None) -> Engine:
         preset = self._resolve_preset(model) if model else self._preset
         if self._engine is None or self._engine.preset.name != preset.name:
             self._engine = None  # drop the previous model before loading another
-            self._engine = Engine(preset, backend=self._backend)
+            self._engine = Engine(preset, backend=self.backend)
         self._engine.preset = preset
         self._preset = preset
         return self._engine
@@ -129,7 +144,7 @@ class TypeSafeClient:
         return self._calibrated(ctx, kind, question, options, scores / self._preset.tau), tokens
 
     def _digest(self, kind: str, question: Question, options: list[Option]) -> str:
-        return question_digest(model_key(self._preset.name, self._backend), kind, question.instructions, options)
+        return question_digest(model_key(self._preset.name, self.backend), kind, question.instructions, options)
 
     def _head(self, ctx: Context | None, kind, question, options) -> dict | None:
         return ctx.heads.get(self._digest(kind, question, options)) if ctx else None
