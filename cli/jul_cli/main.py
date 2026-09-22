@@ -1,5 +1,6 @@
 """The `jul` command line. Built only on the public API of the library.
 
+  jul setup                    # backend, weights and a first check for the default model
   jul ask choice "Which team should handle this ticket?" \
       -o billing:"payments, invoices" -o technical:"bugs, errors" \
       --state "I was charged twice" --model minicpm5-2b
@@ -231,6 +232,11 @@ def cmd_models_add(a):
     print(f"\nUse it: jul ask ... --model {preset.name} --backend {c['backend']}")
 
 
+def cmd_setup(a):
+    from jul_cli.setup import run
+    run(a.model, a.backend, install=not a.no_install, skip_check=a.no_check)
+
+
 def cmd_lab(a):
     """The prototype's research commands (feature extraction, head training, benchmarks)."""
     from jul.lab.cli import main as lab_main
@@ -245,6 +251,13 @@ def build_parser() -> argparse.ArgumentParser:
     backend_kw = dict(choices=list(BACKENDS), default=None,
                       help="default: $JUL_BACKEND, else mlx on Apple Silicon, else torch")
     sub = p.add_subparsers(dest="command", required=True)
+
+    s = sub.add_parser("setup", help="install the backend, download the model, check a first answer")
+    s.add_argument("--model", **model_kw)
+    s.add_argument("--backend", **backend_kw)
+    s.add_argument("--no-install", action="store_true", help="do not pip install a missing backend")
+    s.add_argument("--no-check", action="store_true", help="skip the final test decision")
+    s.set_defaults(fn=cmd_setup)
 
     s = sub.add_parser("ask", help="one typed question, answered now")
     s.add_argument("kind", choices=list(TYPES))
@@ -312,6 +325,10 @@ def main(argv=None) -> None:
     a = build_parser().parse_args(argv)
     if a.command == "context" and a.action != "list" and not a.name:
         raise SystemExit(f"context {a.action} needs a name")
+    if a.command in {"ask", "run", "autotune"} or (
+            a.command == "context" and a.action == "create" and a.examples and not a.lazy):
+        from jul_cli.setup import require_setup
+        require_setup(a.model, a.backend)
     a.fn(a)
 
 

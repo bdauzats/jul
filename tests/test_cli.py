@@ -91,3 +91,49 @@ def test_context_actions_are_constrained():
     assert build_parser().parse_args(["context", "list"]).action == "list"
     with pytest.raises(SystemExit):
         build_parser().parse_args(["context", "frobnicate", "x"])
+
+
+# --- jul setup ----------------------------------------------------------------------------------
+
+REQUIRES = ['numpy>=1.24',
+            'mlx>=0.32; (sys_platform == "darwin" and platform_machine == "arm64") and extra == "mlx"',
+            'torch>=2.4; extra == "torch"', 'transformers>=5.0; extra == "torch"',
+            'pyyaml>=6; extra == "yaml"']
+
+
+def test_setup_reads_an_extra_with_its_platform_markers_but_without_the_extra(monkeypatch):
+    from jul_cli import setup
+    monkeypatch.setattr(setup.importlib.metadata, "requires", lambda _: REQUIRES)
+    assert setup.extra_requirements("torch") == ["torch>=2.4", "transformers>=5.0"]
+    assert setup.extra_requirements("mlx") == [
+        'mlx>=0.32; (sys_platform == "darwin" and platform_machine == "arm64")']
+
+
+def test_setup_without_install_names_the_missing_backend_and_the_command(monkeypatch):
+    from jul_cli import setup
+    monkeypatch.setattr(setup.importlib.util, "find_spec", lambda _: None)
+    with pytest.raises(SystemExit, match=r'torch is not installed.*pip install -e "\.\[torch\]"'):
+        setup.ensure_backend("torch", install=False)
+
+
+def test_setup_is_a_command():
+    a = build_parser().parse_args(["setup", "--backend", "torch", "--no-check"])
+    assert a.backend == "torch" and a.no_check and not a.no_install
+
+
+def test_ask_says_to_run_setup_when_the_weights_are_not_downloaded(monkeypatch):
+    from jul_cli import setup
+    from jul_cli.main import main
+    monkeypatch.setattr(setup, "missing_modules", lambda _: [])
+    monkeypatch.setattr(setup, "weights_cached", lambda _: False)
+    with pytest.raises(SystemExit, match=r"not downloaded for torch.*Run: jul setup --backend torch"):
+        main(["ask", "choice", "q", "-o", "a", "-o", "b", "--state", "s", "--backend", "torch"])
+
+
+def test_ask_says_to_run_setup_when_no_backend_is_installed(monkeypatch):
+    from jul_cli.main import main
+    monkeypatch.delenv("JUL_BACKEND", raising=False)
+    monkeypatch.setattr("jul.backbone.resolve_backend",
+                        lambda _: (_ for _ in ()).throw(ImportError("none")))
+    with pytest.raises(SystemExit, match=r"No backend installed. Run: jul setup --model qwen3.5-9b"):
+        main(["ask", "choice", "q", "-o", "a", "-o", "b", "--state", "s", "--model", "qwen3.5-9b"])

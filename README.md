@@ -22,6 +22,37 @@ pip install -e ".[torch]"     # Linux / Windows / any GPU
 # add [yaml] for YAML question files, [dev] for the tests
 ```
 
+Or let `jul setup` do the rest: it picks the backend (MLX on Apple Silicon, else PyTorch), installs
+it if missing, downloads MiniCPM5-2B once, and checks one real decision. Running it again redoes only
+the check.
+
+```bash
+pip install -e .
+jul setup                          # --backend torch, --model qwen3.5-9b, --no-install, --no-check
+```
+
+Or have a big LLM install the small one. Paste this into Claude Code, Codex, or any agent that has
+a shell:
+
+```text
+Install jul (https://github.com/bdauzats/jul), a local library that answers typed questions
+with a 2B model, and check that it works on this machine.
+
+1. Clone it (or use the checkout I am in) and create a virtualenv with Python >= 3.10 inside it.
+2. In that venv: pip install -e .   then   jul setup
+   jul setup picks the backend (MLX on Apple Silicon, else PyTorch), installs it, downloads
+   MiniCPM5-2B (a few GB) and runs one test decision.
+3. Then run:
+   jul ask choice "Which team should handle this ticket?" -o billing:"payments, invoices" -o technical:"bugs, errors" --state "I was charged twice"
+   and show me the JSON.
+
+Do not use sudo and do not install anything outside the venv. If a step fails, show me the error and
+what you suggest before trying something else. At the end, tell me in two lines: the backend, the
+latency per decision, and the answer to the ticket.
+```
+
+Yes: a model that writes essays, installing one that answers in a single word. Neither of them minds.
+
 The backend defaults to MLX when it is installed on Apple Silicon, else PyTorch. Force it with
 `TypeSafeClient(backend="torch")`, `jul ask ... --backend torch`, or `JUL_BACKEND=torch`. The torch
 device defaults to cuda > mps > cpu (`JUL_DEVICE` overrides it), in bfloat16 (float32 on CPU).
@@ -38,8 +69,9 @@ The research code under `jul.lab` still trains its heads with MLX.
 
 ### The models
 
-No weights are committed here. They are downloaded from the Hugging Face Hub the first time a
-preset is used, into `~/.cache/huggingface`, and they are cached for good after that.
+No weights are committed here. `jul setup` downloads them from the Hugging Face Hub into
+`~/.cache/huggingface`, once. The CLI asks for it when they are missing; the Python API downloads them
+on the first call.
 
 | Preset        | MLX repository                                                                          | On disk | PyTorch repository                                                  |
 | ------------- | --------------------------------------------------------------------------------------- | ------: | ------------------------------------------------------------------- |
@@ -48,12 +80,11 @@ preset is used, into `~/.cache/huggingface`, and they are cached for good after 
 
 ¹ Not tested yet on PyTorch.
 
-You only need the preset you actually use, and only one is ever held in memory. To fetch them ahead
-of time instead of on the first call:
+You only need the preset you actually use, and only one is ever held in memory:
 
 ```bash
-huggingface-cli download openbmb/MiniCPM5-2B-MLX
-huggingface-cli download mlx-community/Qwen3.5-9B-4bit
+jul setup                          # minicpm5-2b
+jul setup --model qwen3.5-9b
 ```
 
 `jul models` shows which ones are already downloaded.
