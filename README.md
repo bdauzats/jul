@@ -260,7 +260,9 @@ first use, one at a time (Qwen3.5-9B is about 5.5 GB).
 
 ### The decision model, on the development sets
 
-`minicpm5-2b-decision` has **not** been run on the Jev benchmark. Here are the four development sets
+`minicpm5-2b-decision` was trained on the training splits of the benchmark's three datasets, so its
+benchmark row is **not** zero-shot and does not belong in the tables above — it is in
+[its own block](#the-decision-model-on-the-jev-benchmark) below. Here are the four development sets
 (BTZSC, 200 examples each), both models read through this library (`scripts/dev_decision_jul.py` in the
 research repo), on an M4 Pro (24 GB) on mains power:
 
@@ -286,8 +288,27 @@ Cells are accuracy / ECE (lower is better) / p50 latency.
   own data if you need the probabilities themselves, not only the answer.
 - On the data it was trained on it stands between the two published Kev models (`transfer-v4`, sources
   never trained on: 0.721, against 0.652 for Kev-0.8B and 0.797 for Kev-4B; Jev 0.857).
-- **Its training mix includes AG News, Banking77 and Emotion**, the three datasets of the Jev benchmark.
-  A benchmark run would therefore not be zero-shot, and would not compare with the rows above.
+### The decision model, on the Jev benchmark
+
+Same 300 rows, same metrics (`scripts/bench_jul_decision.py` in the research repo). **This row is not
+zero-shot**: its training mix includes the training splits of all three datasets, so it compares with
+Kev, which does the same, and not with Jev or with the zero-shot rows above.
+
+| Trained on these tasks     |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |    p50 |
+| -------------------------- | -------: | --------: | -------: | --------: | --------: | -----: |
+| jul `minicpm5-2b-decision` | **0.91** |      0.79 | **0.69** | **0.796** | **0.133** | 217 ms |
+| Jev (published)            |     0.90 |  **0.86** |     0.48 |     0.747 |     0.156 | 246 ms |
+| GLiNER2.5 (published)      |     0.66 |      0.57 |     0.41 |     0.545 |     0.101 | 128 ms |
+
+Read honestly:
+
+- **The whole gain is Emotion** (0.69 against 0.48), which is in the training mix. Learning a task and
+  then scoring well on it proves nothing about a new one.
+- **Banking77 stays 7 points behind Jev (0.79 against 0.86) although it was trained on it.** Seventy-two
+  fine-grained intents remain the hard part — the vector method scores 0.59 there.
+- AG News is a tie. Calibration is better than Jev's (0.133 against 0.156) and latency comparable.
+- What to take from the block above instead: on sources it has **never** seen (Kev's `transfer-v4`), it
+  scores 0.721 where Jev scores 0.857.
 
 ## Context — what the data looks like
 
