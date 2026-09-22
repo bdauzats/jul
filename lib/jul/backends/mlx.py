@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 import mlx.core as mx
 import numpy as np
@@ -14,6 +16,24 @@ from ..backbone import Backbone
 
 class _StopForward(Exception):
     pass
+
+
+def _rope_fix(repo: str) -> dict | None:
+    """transformers 5 writes the RoPE base under `rope_parameters`; mlx-lm reads `rope_theta` and
+    silently falls back to 10000 when it is missing, which gives wrong answers without any error
+    (JOURNAL §9 duovicies). Pass the right value when a converted config has only the new key."""
+    path = Path(repo) / "config.json"
+    if not path.exists():
+        # a Hub repo: the cached config, else fetch that one file (1 KB, before the weights)
+        from huggingface_hub import hf_hub_download, try_to_load_from_cache
+        cached = try_to_load_from_cache(repo, "config.json")
+        try:
+            path = Path(cached if isinstance(cached, str) else hf_hub_download(repo, "config.json"))
+        except Exception:
+            return None
+    config = json.loads(path.read_text())
+    theta = (config.get("rope_parameters") or {}).get("rope_theta")
+    return {"rope_theta": theta} if theta and "rope_theta" not in config else None
 
 
 class _Tap:
@@ -50,7 +70,7 @@ class MLXBackbone(Backbone):
 
     def __init__(self, name: str, backend: str | None = None):
         super().__init__(name)
-        self.model, self.tokenizer = load(self.repo)
+        self.model, self.tokenizer = load(self.repo, model_config=_rope_fix(self.repo))
         layers = self.model.layers
         for i, block in enumerate(layers):
             layers[i] = _Tap(block, i, self)
@@ -86,6 +106,21 @@ class MLXBackbone(Backbone):
         # after the prefix. Layers replace their state arrays rather than writing into them, so the
         # copy is never modified.
         return _Prefix(len(tokens), snapshot=[tuple(c.state) for c in cache])
+
+    def last_hidden(self, tokens, prefix: _Prefix | None = None) -> np.ndarray:
+        self._want, self._stop_at = set(), None
+        cache = None
+        if prefix is not None:
+            cache = self._restored(prefix.snapshot) if prefix.snapshot is not None else prefix.cache
+        try:
+            h = self._inner(mx.array(tokens)[None], cache=cache)[0].astype(mx.float32)
+            mx.eval(h)
+            return np.array(h)
+        finally:
+            if prefix is not None and prefix.cache is not None:
+                for c in prefix.cache:
+                    if c.offset > prefix.n:
+                        c.trim(c.offset - prefix.n)
 
     def _restored(self, snapshot):
         cache = make_prompt_cache(self.model)

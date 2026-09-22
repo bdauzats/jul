@@ -93,6 +93,10 @@ class Engine:
             MODELS[preset.name] = preset.repos  # presets are the source of truth for repos
             backbone = Backbone(preset.name, backend)
         self.backbone = backbone
+        self.pointer = None
+        if preset.method == "pointer":
+            from .decision import DecisionSpec, PointerReader
+            self.pointer = PointerReader(backbone, DecisionSpec.load(backbone.model_dir))
         self._questions: OrderedDict[tuple, CompiledQuestion] = OrderedDict()
         self._max_cached = max_cached_questions
         self._one_word_templates: dict[str, PromptTemplate] = {}

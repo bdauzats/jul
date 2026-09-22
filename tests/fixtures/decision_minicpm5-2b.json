@@ -1,0 +1,57 @@
+{
+ "method": "pointer",
+ "about": "minicpm5-2b-decision: MiniCPM5-2B + merged LoRA, multi-task decision training (JOURNAL §9 duovicies). Format and readout of Kev's pointer model.",
+ "tokens": {
+  "state": "<|fim_prefix|>",
+  "question": "<|fim_middle|>",
+  "option_open": "<|execute_start|>",
+  "option_close": "<|execute_end|>",
+  "decide": "<|fim_suffix|>"
+ },
+ "layout": {
+  "prefix": [
+   "state",
+   "{state}"
+  ],
+  "branch": [
+   "question",
+   "{instructions}",
+   "{options}",
+   "decide"
+  ],
+  "option": [
+   "option_open",
+   "{option}",
+   "option_close"
+  ]
+ },
+ "option_text": {
+  "with_description": "{name}: {description}",
+  "without_description": "{name}"
+ },
+ "noul_options": [
+  "no",
+  "yes"
+ ],
+ "escape_user_specials": {
+  "pattern": "<\\|([A-Za-z0-9_]+)\\|>",
+  "replace": "<¦\\1¦>"
+ },
+ "add_special_tokens": false,
+ "readout": {
+  "layer": "last_normed",
+  "question_token": "decide",
+  "option_token": "option_close"
+ },
+ "head": {
+  "file": "pointer_head.npz",
+  "query": "q",
+  "key": "k",
+  "dim": 256,
+  "temperature": 1.9543199368684914
+ },
+ "limits": {
+  "max_state_tokens": 384,
+  "max_branch_tokens": 1024
+ }
+}

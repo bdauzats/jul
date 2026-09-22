@@ -114,6 +114,15 @@ class TypeSafeClient:
         shared: dict[int, np.ndarray] = {}
         answers, tokens = {}, 0
 
+        if engine.pointer is not None:
+            # A decision model reads the raw state in its own format, once for all the questions.
+            items = [(_kind_of(q), q.instructions, options_of(q)) for q in questions.values()]
+            logits, tokens = engine.pointer.logits(state, items)
+            for (name, question), (kind, _, options), z in zip(questions.items(), items, logits):
+                answers[name] = _format(kind, question, options, self._calibrated(ctx, kind, question, options, z))
+            return SystemOneResponse(answers=answers, model=self._preset.name, usage=Usage(input_tokens=tokens),
+                                     request_id=str(uuid.uuid4()))
+
         for name, question in questions.items():
             kind = _kind_of(question)
             how = method or self.method or DEFAULT_METHOD[kind]
@@ -173,6 +182,9 @@ class TypeSafeClient:
         if isinstance(context, str) and ctx.name is None:
             ctx.name = context
         engine = self._engine_for(model)
+        if engine.pointer is not None:
+            raise ValueError(f"{self._preset.name!r} is a decision model (pointer method): autotune trains "
+                             "heads on vector features and does not apply to it yet")
         states = [serialize_state(s) for s, _ in labeled]
         reports: dict[str, tuning.TuningReport] = {}
 

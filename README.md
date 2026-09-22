@@ -77,8 +77,11 @@ on the first call.
 | ------------- | --------------------------------------------------------------------------------------- | ------: | ------------------------------------------------------------------- |
 | `minicpm5-2b` | [`openbmb/MiniCPM5-2B-MLX`](https://huggingface.co/openbmb/MiniCPM5-2B-MLX)             |  2.7 GB | [`openbmb/MiniCPM5-2B`](https://huggingface.co/openbmb/MiniCPM5-2B) |
 | `qwen3.5-9b`  | [`mlx-community/Qwen3.5-9B-4bit`](https://huggingface.co/mlx-community/Qwen3.5-9B-4bit) |   11 GB | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) ¹       |
+| `minicpm5-2b-decision` ² | [`bdauzats/minicpm5-2b-decision-mlx-4bit`](https://huggingface.co/bdauzats/minicpm5-2b-decision-mlx-4bit) | 1.3 GB | [`bdauzats/minicpm5-2b-decision`](https://huggingface.co/bdauzats/minicpm5-2b-decision) |
 
 ¹ Not tested yet on PyTorch.
+² A decision model, read differently from the two presets: see [Decision models](#decision-models). It
+is not built in; add it once with `jul models add` (below).
 
 You only need the preset you actually use, and only one is ever held in memory:
 
@@ -112,6 +115,30 @@ The calibration data is downloaded once from BTZSC into `~/.jul/calibration-data
 `pip install -e ".[calibrate]"`), or taken from `--data <dir>`. The dev accuracy it reports comes
 with its standard error (±3.5 points at n=200): it orients, it does not rank close models. Measure
 on the Jev bench separately, once.
+
+### Decision models
+
+A *decision model* is a model trained to answer questions about a state, rather than to write text. It
+reads the state and the options through delimiter tokens it learned, and a small head scores each
+option against the question. `jul` runs one with no code of its own: everything that model needs sits
+next to its weights, in a `decision.json` (delimiters, layout, readout, head file, temperature, and the
+longest state and question it was trained on).
+
+```bash
+jul models add minicpm5-2b-decision --repo bdauzats/minicpm5-2b-decision-mlx-4bit   # MLX, 1.3 GB
+jul models add minicpm5-2b-decision --repo bdauzats/minicpm5-2b-decision --backend torch
+jul ask choice "Which team should handle this ticket?" -o billing -o shipping -o access \
+    --state "I was charged twice for order 4411" --model minicpm5-2b-decision
+```
+
+A repo (or a local directory) holding a `decision.json` is registered as it is: there is nothing to
+fit, no layer to choose and no tau, so the command returns at once. The API is the same as for any other model, and all three
+question types go through the same format. The state is encoded once per call and every question
+continues from it, so questions never see each other.
+
+Two differences with the presets above: `autotune(...)` does not apply (its heads are trained on the
+vectors of the other method, and such a model needs a full fine-tune instead), and a state longer than
+the limit in its `decision.json` is truncated rather than stretched.
 
 ## Use it as a drop-in for Jev
 
@@ -164,12 +191,17 @@ formulations are averaged, then `softmax(cosine / tau)`.
 The model never writes anything. Everything state-independent — the prompt prefix, the option vectors,
 the center — is computed once, so a call only pays for its own tokens.
 
-## Two presets
+## Two presets, and a decision model
 
 | Preset                          | Model                           | Layers  |    tau | Latency (p50) | Jev bench, zero-shot |
 | ------------------------------- | ------------------------------- | ------- | -----: | ------------: | -------------------- |
 | `minicpm5-2b` (alias `fast`)    | `openbmb/MiniCPM5-2B-MLX`       | 39 / 40 | 0.0413 |     **64 ms** | 0.617                |
 | `qwen3.5-9b` (alias `accurate`) | `mlx-community/Qwen3.5-9B-4bit` | 31 / 31 | 0.0483 |        273 ms | 0.660                |
+
+A third option does not read a general model at all: `minicpm5-2b-decision` is MiniCPM5-2B *trained*
+to answer typed questions (a merged LoRA and a pointer head). It has no layer and no tau — it brings
+its own format — and it is 6 points ahead on the development sets, at a latency that depends on how
+many options a question has. It is not built in: `jul models add` registers it in a second.
 
 ## Results
 
@@ -218,6 +250,30 @@ Read honestly:
 
 Every layer and temperature was fitted on dev datasets the Jev benchmark never uses. Models load on
 first use, one at a time (Qwen3.5-9B is about 5.5 GB).
+
+### The decision model, on the development sets
+
+`minicpm5-2b-decision` has **not** been run on the Jev benchmark. Here are the four development sets
+(BTZSC, 200 examples each), both models read through this library (`scripts/dev_decision_jul.py` in the
+research repo), on an M4 Pro on mains power:
+
+| Development set     | `minicpm5-2b` (vectors) | `minicpm5-2b-decision` |
+| ------------------- | ----------------------: | ---------------------: |
+| FinancialPhraseBank |        0.705 / 105 ms   |   **0.755** / **65 ms** |
+| Yahoo Topics        |        0.450 / 203 ms   |   **0.610** / 140 ms   |
+| Empathetic          |        0.345 / 208 ms   |   **0.395** / 208 ms   |
+| Massive (59 options)|    **0.670** / **63 ms**|       0.665 / 613 ms   |
+| **Mean**            |                   0.542 |              **0.606** |
+
+- **+6 points**, and the ranking holds whichever way the options are written (short names, as above, or
+  the full label sentences: 0.542 against 0.613).
+- **Latency depends on the options.** The vector method encodes them once and caches them; the decision
+  model re-reads all of them on every request. Three short options: 65 ms against 105. Fifty-nine long
+  ones: 613 ms against 63.
+- On the data it was trained on it stands between the two published Kev models (`transfer-v4`, sources
+  never trained on: 0.721, against 0.652 for Kev-0.8B and 0.797 for Kev-4B; Jev 0.857).
+- **Its training mix includes AG News, Banking77 and Emotion**, the three datasets of the Jev benchmark.
+  A benchmark run would therefore not be zero-shot, and would not compare with the rows above.
 
 ## Context — what the data looks like
 
@@ -338,6 +394,9 @@ jul context list | show tickets | delete tickets
 jul synth questions.yaml --seeds sample.jsonl --per-option 30 --output synth.jsonl
 jul autotune tickets --questions questions.yaml --labeled labeled.jsonl
 jul models
+jul models add minicpm5-2b-decision --repo bdauzats/minicpm5-2b-decision-mlx-4bit   # a decision model
+jul models add my-model --repo org/Some-Instruct-3B                                 # fits a preset
+jul setup --model minicpm5-2b-decision    # backend, weights and one timed decision
 jul lab ...        # the research commands of the prototype
 ```
 
@@ -437,6 +496,7 @@ jul/
     types.py        questions and answers, same fields as the Jev SDK
     presets.py      the two presets: repo, layers, tau, centers
     engine.py       the vector method: formulations, cached prefixes, combination
+    decision.py     the pointer method: a decision model read with its own decision.json
     client.py       TypeSafeClient / AsyncTypeSafeClient
     context.py      Context: description, examples, labeled; disk cache
     synth.py        `jul synth`: synthetic labeled data for autotune
@@ -454,9 +514,9 @@ jul/
 ## Tests
 
 ```bash
-pytest tests                       # 66 tests, under a second, no model and no data
-JUL_SLOW=1 pytest tests            # all 88, downloads and loads both presets (~2 min)
-JUL_SLOW=1 pytest tests -m slow    # only the 22 that need a model
+pytest tests                       # 86 tests, under a second, no model and no data
+JUL_SLOW=1 pytest tests            # all 112, downloads and loads both presets (~2 min)
+JUL_SLOW=1 pytest tests -m slow    # only the 26 that need a model
 JUL_SLOW=1 pytest tests -m torch   # MLX against PyTorch on the same weights
 ```
 

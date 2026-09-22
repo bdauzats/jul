@@ -233,8 +233,11 @@ def cmd_models(a):
     print("\naliases: " + ", ".join(f"{a} -> {t}" for a, t in ALIASES.items()))
     for name, backend, p in rows:
         print(f"\n{name} ({backend}): " + ", ".join(f"{b} {r}" for b, r in p.repos.items()))
-        print("  formulations: " + ", ".join(f"{f.name}@layer{f.layer}" for f in p.formulations)
-              + f", tau={p.tau}, center={p.center}")
+        if p.method == "pointer":
+            print("  method: pointer (decision model; format, head and temperature in its decision.json)")
+        else:
+            print("  formulations: " + ", ".join(f"{f.name}@layer{f.layer}" for f in p.formulations)
+                  + f", tau={p.tau}, center={p.center}")
         if p.notes:
             print(f"  note: {p.notes}")
     print("\nAdd a model: jul models add <name> --repo <hf repo> [--backend mlx|torch]")
@@ -244,6 +247,16 @@ def cmd_models_add(a):
     from jul.calibrate import CalibrationError, calibrate
     if not a.name:
         raise SystemExit("models add needs a name")
+    from jul.decision import spec_source
+    source = spec_source(a.repo) if a.repo else None
+    if source:
+        from jul.backbone import resolve_backend
+        from jul.presets import pointer_preset, save_preset
+        preset = pointer_preset(a.name, source, resolve_backend(a.backend))
+        path = save_preset(preset)
+        print(f"{a.name}: decision model on {preset.backend}, read with its decision.json (nothing to fit) -> {path}")
+        print(f"\nUse it: jul ask ... --model {a.name} --backend {preset.backend}")
+        return
     try:
         preset = calibrate(a.name, repo=a.repo, backend=a.backend, data=a.data,
                            n_dev=a.n_dev, n_generic=a.n_generic)
@@ -346,7 +359,8 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("models", help="list the presets, or fit one for a new model (add)")
     s.add_argument("action", nargs="?", choices=["list", "add"], default="list")
     s.add_argument("name", nargs="?", help="add: the preset name")
-    s.add_argument("--repo", help="add: Hugging Face repo (default: the known repo for this name)")
+    s.add_argument("--repo", help="add: Hugging Face repo (default: the known repo for this name), or a local "
+                                  "directory; one holding a decision.json is added as a decision model")
     s.add_argument("--backend", **backend_kw)
     s.add_argument("--data", type=Path, help="add: calibration data dir (default: fetched into "
                                                "~/.jul/calibration-data)")
