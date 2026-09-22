@@ -7,6 +7,7 @@ for the measurements behind each value.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,7 +31,7 @@ class Formulation:
 @dataclass(frozen=True)
 class Preset:
     name: str
-    repo: str
+    repo: str                      # MLX repo
     formulations: tuple[Formulation, ...]
     tau: float
     latency_ms: str
@@ -39,14 +40,23 @@ class Preset:
     #: "generic" = the asset fitted on varied texts, "none" = no centering.
     center: str = "options"
     notes: str = ""
+    torch_repo: str | None = None  # transformers repo; None: no torch backend for this preset
 
     @property
     def layers(self) -> list[int]:
         return sorted({f.layer for f in self.formulations})
 
-    def generic_center(self, formulation: Formulation) -> np.ndarray | None:
-        path = ASSETS / f"{self.name}.{formulation.name}.center.npy"
-        return np.load(path) if path.exists() else None
+    @property
+    def repos(self) -> dict[str, str]:
+        return {"mlx": self.repo, **({"torch": self.torch_repo} if self.torch_repo else {})}
+
+    def generic_center(self, formulation: Formulation, backend: str = "mlx") -> np.ndarray | None:
+        """The asset fitted with this backend's weights, else the MLX one."""
+        names = ([f"{self.name}.{backend}.{formulation.name}.center.npy"] if backend != "mlx" else [])
+        for path in [ASSETS / n for n in names + [f"{self.name}.{formulation.name}.center.npy"]]:
+            if path.exists():
+                return np.load(path)
+        return None
 
 
 PRESETS: dict[str, Preset] = {
@@ -56,6 +66,7 @@ PRESETS: dict[str, Preset] = {
     "minicpm5-2b": Preset(
         name="minicpm5-2b",
         repo="openbmb/MiniCPM5-2B-MLX",
+        torch_repo="openbmb/MiniCPM5-2B",
         formulations=(Formulation("one_word", ONE_WORD, 39),
                       Formulation("question_options", QUESTION_OPTIONS, 40)),
         tau=0.04133,
@@ -71,6 +82,7 @@ PRESETS: dict[str, Preset] = {
     "qwen3.5-9b": Preset(
         name="qwen3.5-9b",
         repo="mlx-community/Qwen3.5-9B-4bit",
+        torch_repo="Qwen/Qwen3.5-9B",
         formulations=(Formulation("one_word", ONE_WORD, 31),
                       Formulation("question_options", QUESTION_OPTIONS, 31)),
         tau=0.04827,
@@ -104,5 +116,4 @@ def one_word_preset(name: str | None = None) -> Preset:
     """The cheaper single-pass variant of a preset: one formulation, its own temperature."""
     p = resolve(name)
     layer, tau = ONE_WORD_ONLY[p.name]
-    return Preset(name=p.name, repo=p.repo, formulations=(Formulation("one_word", ONE_WORD, layer),),
-                  tau=tau, latency_ms=p.latency_ms, quality=p.quality, center=p.center, notes=p.notes)
+    return dataclasses.replace(p, formulations=(Formulation("one_word", ONE_WORD, layer),), tau=tau)

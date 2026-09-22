@@ -3,7 +3,8 @@
 Jev is a hosted _System One model_. This is just an LLM, on your Mac.
 
 Typed decisions with the interface of the TypeSafe (Jev) Python SDK — same imports, same calls, same
-response shapes. Everything runs through MLX: no API key, no network, and not one token generated.
+response shapes. Everything runs locally, through MLX on a Mac or PyTorch anywhere else: no API key,
+no network, and not one token generated.
 
 That last part is not a limitation. JuL is stopped one step before its first syllable and the answer
 is taken straight out of its head: no monologue, no reasoning trace, no opinion on the matter —
@@ -13,21 +14,39 @@ And when it is off-key, there is always `client.autotune(...)` — or `jul autot
 
 ## Install
 
-Apple Silicon only: everything runs through MLX.
+Pick a backend: MLX on Apple Silicon, PyTorch (transformers) anywhere else — CUDA, CPU, or MPS.
 
 ```bash
-pip install -e .              # add [yaml] for YAML question files, [dev] for the tests
+pip install -e ".[mlx]"       # Apple Silicon
+pip install -e ".[torch]"     # Linux / Windows / any GPU
+# add [yaml] for YAML question files, [dev] for the tests
 ```
+
+The backend defaults to MLX when it is installed on Apple Silicon, else PyTorch. Force it with
+`TypeSafeClient(backend="torch")`, `jul ask ... --backend torch`, or `JUL_BACKEND=torch`. The torch
+device defaults to cuda > mps > cpu (`JUL_DEVICE` overrides it), in bfloat16 (float32 on CPU).
+
+**The two backends do not run the same weights.** The MLX presets are 4-bit; PyTorch loads the
+original bf16 weights. On the same weights the two backends read the same vectors (cosine > 0.9999,
+`tests/test_backends.py`), but 4-bit moves them to a cosine of ~0.95 with bf16. The presets' tau and
+generic centers were fitted on the 4-bit MLX weights, so on PyTorch they are a starting point, not
+measured values. A backend-specific center is picked up from `assets/<preset>.<backend>.<formulation>.center.npy`
+when it exists. Centers, heads and calibrations saved in a context are keyed per backend, so a head
+trained on MLX is never applied to PyTorch vectors.
+
+The research code under `jul.lab` still trains its heads with MLX.
 
 ### The models
 
-No weights are committed here. `mlx-lm` downloads them from the Hugging Face Hub the first time a
+No weights are committed here. They are downloaded from the Hugging Face Hub the first time a
 preset is used, into `~/.cache/huggingface`, and they are cached for good after that.
 
-| Preset        | Repository                                                                              | On disk |
-| ------------- | --------------------------------------------------------------------------------------- | ------: |
-| `minicpm5-2b` | [`openbmb/MiniCPM5-2B-MLX`](https://huggingface.co/openbmb/MiniCPM5-2B-MLX)             |  2.7 GB |
-| `qwen3.5-9b`  | [`mlx-community/Qwen3.5-9B-4bit`](https://huggingface.co/mlx-community/Qwen3.5-9B-4bit) |   11 GB |
+| Preset        | MLX repository                                                                          | On disk | PyTorch repository                                                  |
+| ------------- | --------------------------------------------------------------------------------------- | ------: | ------------------------------------------------------------------- |
+| `minicpm5-2b` | [`openbmb/MiniCPM5-2B-MLX`](https://huggingface.co/openbmb/MiniCPM5-2B-MLX)             |  2.7 GB | [`openbmb/MiniCPM5-2B`](https://huggingface.co/openbmb/MiniCPM5-2B) |
+| `qwen3.5-9b`  | [`mlx-community/Qwen3.5-9B-4bit`](https://huggingface.co/mlx-community/Qwen3.5-9B-4bit) |   11 GB | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) ¹       |
+
+¹ Not tested yet on PyTorch.
 
 You only need the preset you actually use, and only one is ever held in memory. To fetch them ahead
 of time instead of on the first call:
@@ -350,7 +369,8 @@ jul/
     client.py       TypeSafeClient / AsyncTypeSafeClient
     context.py      Context: description, examples, labeled; disk cache
     tuning.py       `autotune(...)`: per-task head, cross-validated, with a safety net
-    backbone.py     MLX pass, stop at a layer, cached prefix
+    backbone.py     the backend interface: tap layers, stop early, cached prefix; picks the backend
+    backends/       mlx.py (mlx-lm) and torch.py (transformers)
     calibration.py  temperature and per-option bias
     lab/            research code, kept out of the public API
   cli/jul_cli/      the command line
@@ -361,13 +381,14 @@ jul/
 ## Tests
 
 ```bash
-pytest tests                       # 61 tests, under a second, no model and no data
-JUL_SLOW=1 pytest tests            # all 80, downloads and loads both presets (~90 s)
-JUL_SLOW=1 pytest tests -m slow    # only the 19 that need a model
+pytest tests                       # 66 tests, under a second, no model and no data
+JUL_SLOW=1 pytest tests            # all 88, downloads and loads both presets (~2 min)
+JUL_SLOW=1 pytest tests -m slow    # only the 22 that need a model
+JUL_SLOW=1 pytest tests -m torch   # MLX against PyTorch on the same weights
 ```
 
 **`JUL_SLOW` is a test-only switch**, read by `tests/conftest.py` and by nothing in the library. The
-19 tests marked `@pytest.mark.slow` load a real MLX model, so a plain `pytest` skips them rather than
+22 tests marked `@pytest.mark.slow` load a real model, so a plain `pytest` skips them rather than
 pulling 13 GB of weights on someone who just cloned the repo. They are reported as skipped, with the
 reason, never silently dropped. Set `JUL_SLOW=1` to run them.
 

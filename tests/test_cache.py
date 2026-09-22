@@ -18,9 +18,8 @@ def backbone():
 
 
 def vector(template, backbone, text, layer=39):
-    import mlx.core as mx
     h, _ = template.run(text, layers=[layer])
-    return np.array(h[layer][: h[layer].shape[0] // 2].astype(mx.float32))
+    return h[layer][: h[layer].shape[0] // 2]
 
 
 def cosine(a, b):

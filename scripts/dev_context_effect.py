@@ -54,7 +54,7 @@ def encode(prompt: str, layer: int, texts: list[str]) -> np.ndarray:
     out = []
     for t in texts:
         h, _ = tpl.run(t, layers=[layer])
-        out.append(np.array(h[layer][: h[layer].shape[0] // 2].astype(mx.float32)))
+        out.append(h[layer][: h[layer].shape[0] // 2])
     return np.stack(out)
 
 

@@ -88,14 +88,15 @@ class Context:
     # --- centers ------------------------------------------------------------------------------
 
     @staticmethod
-    def _center_key(preset, formulation) -> str:
-        return f"{preset.name}.{formulation.name}.{formulation.layer}"
+    def _center_key(model, formulation) -> str:
+        """`model`: a Preset, or a backbone's `key` (the preset name, tagged with a non-MLX backend)."""
+        return f"{getattr(model, 'name', model)}.{formulation.name}.{formulation.layer}"
 
-    def center_for(self, preset, formulation) -> np.ndarray | None:
-        return self.centers.get(self._center_key(preset, formulation))
+    def center_for(self, model, formulation) -> np.ndarray | None:
+        return self.centers.get(self._center_key(model, formulation))
 
-    def set_center(self, preset, formulation, vector: np.ndarray) -> None:
-        self.centers[self._center_key(preset, formulation)] = vector
+    def set_center(self, model, formulation, vector: np.ndarray) -> None:
+        self.centers[self._center_key(model, formulation)] = vector
 
     # --- disk cache ---------------------------------------------------------------------------
 

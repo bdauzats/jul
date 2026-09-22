@@ -33,7 +33,6 @@ import math
 from collections import OrderedDict
 from pathlib import Path
 
-import mlx.core as mx
 import numpy as np
 
 from ..backbone import Backbone, PromptTemplate
@@ -97,7 +96,7 @@ class QuickFast:
 
     def __init__(self, model: str = DEFAULT_MODEL, backbone: Backbone | None = None, max_cached_questions: int = 64):
         self.backbone = backbone or Backbone(model)
-        self._questions: OrderedDict[tuple, tuple[PromptTemplate, mx.array]] = OrderedDict()
+        self._questions: OrderedDict[tuple, tuple[PromptTemplate, np.ndarray]] = OrderedDict()
         self._max_cached = max_cached_questions
         self.calibration: dict[tuple, tuple[float, np.ndarray]] = {}  # question -> (temperature, bias)
         n = self.backbone.n_layers
@@ -157,7 +156,7 @@ class QuickFast:
             return self._questions[key]
         answers, message = _prompt(kind, instructions, labels)
         template = PromptTemplate.from_user_message(self.backbone, message)
-        entry = (template, mx.array(answer_token_ids(self.backbone, answers)))
+        entry = (template, np.array(answer_token_ids(self.backbone, answers)))
         self._questions[key] = entry
         if len(self._questions) > self._max_cached:
             self._questions.popitem(last=False)
@@ -167,7 +166,7 @@ class QuickFast:
         """Last-token hidden state at the vector layer; the forward stops right after that layer."""
         layer = self.vector_layer
         h, _ = self.backbone.forward(self.backbone.encode(VECTOR_TEMPLATE.replace("{x}", text)), layers=[layer])
-        return np.array(h[layer][: h[layer].shape[0] // 2].astype(mx.float32))
+        return h[layer][: h[layer].shape[0] // 2]
 
     def _vector_logits(self, labels: list[Label], input) -> np.ndarray:
         key = _options_key(labels)
@@ -185,7 +184,7 @@ class QuickFast:
             raise ValueError("At most 100 options per question")
         template, ids = self._template(kind, instructions, labels)
         _, logits = template.run(_as_text(input), logits=True)
-        return np.array(logits[ids])
+        return logits[ids]
 
     def _probs(self, kind, instructions, labels, input, temperature, method="letters") -> np.ndarray:
         T, bias = self.calibration.get(_key(kind, instructions, labels, method), (1.0, 0.0))

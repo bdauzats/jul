@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 from jul import Choice, Context, Noul, NoulCriteria, Score, TypeSafeClient
+from jul.backbone import BACKENDS
 from jul.presets import ALIASES, PRESETS
 
 TYPES = {"choice": Choice, "noul": Noul, "score": Score}
@@ -96,7 +97,7 @@ def cmd_ask(a):
             raise SystemExit("score needs at least two -o levels, lowest first")
         question = Score(instructions=a.instructions, criteria=levels)
 
-    client = TypeSafeClient(model=a.model, context=a.context, method=a.method)
+    client = TypeSafeClient(model=a.model, backend=a.backend, context=a.context, method=a.method)
     for state in a.state:
         t = time.perf_counter()
         response = client.system_one(state=state, questions={a.kind: question})
@@ -108,7 +109,7 @@ def cmd_ask(a):
 
 def cmd_run(a):
     questions = load_questions(a.questions)
-    client = TypeSafeClient(model=a.model, context=a.context, method=a.method)
+    client = TypeSafeClient(model=a.model, backend=a.backend, context=a.context, method=a.method)
     out = open(a.output, "w") if a.output else sys.stdout
     n, t0 = 0, time.perf_counter()
     try:
@@ -142,7 +143,7 @@ def cmd_context(a):
                       use_description=a.use_description)
         if examples and not a.lazy:
             # Compile the centers now so later calls pay nothing.
-            client = TypeSafeClient(model=a.model, context=ctx)
+            client = TypeSafeClient(model=a.model, backend=a.backend, context=ctx)
             client.system_one(state=examples[0],
                               questions={"_": Choice(instructions="warm up", criteria={"a": "a", "b": "b"})},
                               context=ctx)
@@ -174,7 +175,7 @@ def cmd_autotune(a):
         ctx = Context.load(a.context)
     except FileNotFoundError:
         ctx = Context(name=a.context)
-    client = TypeSafeClient(model=a.model, context=ctx)
+    client = TypeSafeClient(model=a.model, backend=a.backend, context=ctx)
     print(f"tuning on {len(labeled)} labeled examples with {a.model or 'minicpm5-2b'} ...", file=sys.stderr)
     reports = client.autotune(ctx, questions, labeled)
     for report in reports.values():
@@ -191,11 +192,11 @@ def cmd_models(a):
         cached = set()
     print(f"{'preset':<14} {'downloaded':<11} {'latency':<10} quality")
     for name, p in PRESETS.items():
-        mark = "yes" if p.repo in cached else "no"
+        mark = "yes" if set(p.repos.values()) & cached else "no"
         print(f"{name:<14} {mark:<11} {p.latency_ms + ' ms':<10} {p.quality}")
     print(f"\naliases: " + ", ".join(f"{a} -> {t}" for a, t in ALIASES.items()))
     for name, p in PRESETS.items():
-        print(f"\n{name}: {p.repo}")
+        print(f"\n{name}: " + ", ".join(f"{b} {r}" for b, r in p.repos.items()))
         print(f"  formulations: " + ", ".join(f"{f.name}@layer{f.layer}" for f in p.formulations)
               + f", tau={p.tau}, center={p.center}")
         if p.notes:
@@ -213,6 +214,8 @@ def cmd_lab(a):
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="jul", description="Juste Un LLM - local typed decisions.")
     model_kw = dict(default=None, help=f"preset: {', '.join(PRESETS)} (aliases: {', '.join(ALIASES)})")
+    backend_kw = dict(choices=list(BACKENDS), default=None,
+                      help="default: $JUL_BACKEND, else mlx on Apple Silicon, else torch")
     sub = p.add_subparsers(dest="command", required=True)
 
     s = sub.add_parser("ask", help="one typed question, answered now")
@@ -223,6 +226,7 @@ def build_parser() -> argparse.ArgumentParser:
                         "score: a level description, lowest first")
     s.add_argument("--state", action="append", required=True, help="the text to judge (repeatable)")
     s.add_argument("--model", **model_kw)
+    s.add_argument("--backend", **backend_kw)
     s.add_argument("--context", help="name of a saved context")
     s.add_argument("--method", choices=["vector", "letters"])
     s.set_defaults(fn=cmd_ask)
@@ -232,6 +236,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--input", required=True)
     s.add_argument("--output")
     s.add_argument("--model", **model_kw)
+    s.add_argument("--backend", **backend_kw)
     s.add_argument("--context")
     s.add_argument("--method", choices=["vector", "letters"])
     s.set_defaults(fn=cmd_run)
@@ -246,6 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
                         "so it is off unless you ask and measure on your own data")
     s.add_argument("--lazy", action="store_true", help="do not compute the centers now")
     s.add_argument("--model", **model_kw)
+    s.add_argument("--backend", **backend_kw)
     s.set_defaults(fn=cmd_context)
 
     s = sub.add_parser("autotune", help="train a per-task head from labeled examples")
@@ -253,6 +259,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--questions", required=True)
     s.add_argument("--labeled", required=True, help="JSONL: {state, answers: {question: answer}}")
     s.add_argument("--model", **model_kw)
+    s.add_argument("--backend", **backend_kw)
     s.set_defaults(fn=cmd_autotune)
 
     s = sub.add_parser("models", help="available presets, whether downloaded, indicative latency")

@@ -6,13 +6,17 @@ import json
 import time
 from pathlib import Path
 
-import mlx.core as mx
 import numpy as np
 
 from ..backbone import Backbone
 from .task import Prompts, Task
 
 SPLITS = ("train", "val", "test")
+
+
+def _logsumexp(z: np.ndarray) -> float:
+    m = z.max()
+    return float(m + np.log(np.exp(z - m).sum()))
 
 
 def feature_dir(root: str | Path, task: Task, model: str) -> Path:
@@ -25,7 +29,7 @@ def extract(backbone: Backbone, task: Task, out_dir: Path, limit: int | None = N
     layers = backbone.layer_indices()
 
     label_feats = prompts.label_features(task.labels, layers)
-    np.save(out_dir / "labels.npy", np.array(label_feats.astype(mx.float16)))
+    np.save(out_dir / "labels.npy", label_feats.astype(np.float16))
 
     meta = {"model": backbone.name, "repo": backbone.repo, "n_layers": backbone.n_layers, "layers": layers,
             "labels": task.label_names, "has_options": prompts.options is not None, "splits": {}}
@@ -41,13 +45,13 @@ def extract(backbone: Backbone, task: Task, out_dir: Path, limit: int | None = N
         t0 = time.perf_counter()
         for i, text in enumerate(texts):
             h, _ = prompts.plain.run(text, layers=layers)
-            q_plain[i] = np.array(mx.stack([h[l] for l in layers]).astype(mx.float16))
+            q_plain[i] = np.stack([h[l] for l in layers])
             if prompts.options:
                 h, logits = prompts.options.run(text, layers=layers, logits=True)
-                q_opts[i] = np.array(mx.stack([h[l] for l in layers]).astype(mx.float16))
-                sel = logits[mx.array(prompts.letter_ids)]
-                letter_logits[i] = np.array(sel)
-                letter_mass[i] = float(mx.exp(mx.logsumexp(sel) - mx.logsumexp(logits)))
+                q_opts[i] = np.stack([h[l] for l in layers])
+                sel = logits[prompts.letter_ids]
+                letter_logits[i] = sel
+                letter_mass[i] = float(np.exp(_logsumexp(sel) - _logsumexp(logits)))
             if log_every and (i + 1) % log_every == 0:
                 rate = (i + 1) / (time.perf_counter() - t0)
                 print(f"  [{backbone.name}] {split} {i + 1}/{n}  ({rate:.1f} ex/s)", flush=True)

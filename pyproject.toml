@@ -10,30 +10,36 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-dependencies = ["mlx>=0.32", "mlx-lm>=0.31", "numpy>=1.24"]
+# The model runs on a backend installed as an extra: [mlx] on Apple Silicon, [torch] anywhere else.
+dependencies = ["numpy>=1.24"]
 
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Operating System :: MacOS",
+    "Operating System :: OS Independent",
 ]
 
 [project.optional-dependencies]
+mlx = ["mlx>=0.32; sys_platform == 'darwin' and platform_machine == 'arm64'",
+       "mlx-lm>=0.31; sys_platform == 'darwin' and platform_machine == 'arm64'"]
+torch = ["torch>=2.4", "transformers>=5.0", "accelerate"]
 yaml = ["pyyaml>=6"]
-lab = ["pyyaml>=6", "datasets", "pyarrow"]
+# The lab trains its heads with MLX.
+lab = ["jul[mlx]", "pyyaml>=6", "datasets", "pyarrow"]
 # Everything needed to re-run the measurements in README > Reproducing.
-repro = ["pyyaml>=6", "datasets", "pyarrow", "pytest>=8", "scikit-learn>=1.3"]
+repro = ["jul[mlx]", "pyyaml>=6", "datasets", "pyarrow", "pytest>=8", "scikit-learn>=1.3"]
 dev = ["pytest>=8", "pyyaml>=6"]
 
 [project.scripts]
 jul = "jul_cli.main:main"
 
 [tool.setuptools]
-package-dir = {"jul" = "lib/jul", "jul.lab" = "lib/jul/lab", "jul_cli" = "cli/jul_cli"}
-packages = ["jul", "jul.lab", "jul_cli"]
+package-dir = {"jul" = "lib/jul", "jul.backends" = "lib/jul/backends", "jul.lab" = "lib/jul/lab", "jul_cli" = "cli/jul_cli"}
+packages = ["jul", "jul.backends", "jul.lab", "jul_cli"]
 
 [tool.setuptools.package-data]
 jul = ["assets/*.npy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["slow: loads a model; run with JUL_SLOW=1"]
+markers = ["slow: loads a model; run with JUL_SLOW=1",
+           "torch: needs the torch backend and the transformers weights"]

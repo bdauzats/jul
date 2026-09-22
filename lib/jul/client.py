@@ -22,6 +22,7 @@ import numpy as np
 
 from . import tuning
 from .calibration import fit_temperature_bias
+from .backbone import model_key, resolve_backend
 from .context import Context, question_digest, resolve_context
 from .engine import Engine, softmax
 from .presets import Preset, one_word_preset, resolve
@@ -41,10 +42,11 @@ class TypeSafeClient:
     """Local, typed decisions. Accepts the Jev SDK's constructor arguments and ignores the remote ones."""
 
     def __init__(self, model: str | None = None, context: Context | str | None = None,
-                 method: str | None = None, one_word_only: bool = False,
+                 method: str | None = None, one_word_only: bool = False, backend: str | None = None,
                  context_home: Path | None = None, api_key: str | None = None, base_url: str | None = None,
                  timeout: float | None = None, max_retries: int | None = None, **_ignored: Any):
         self._one_word_only = one_word_only
+        self._backend = resolve_backend(backend)
         self._preset = self._resolve_preset(model)
         self._engine: Engine | None = None
         self._context_home = context_home
@@ -60,7 +62,7 @@ class TypeSafeClient:
         preset = self._resolve_preset(model) if model else self._preset
         if self._engine is None or self._engine.preset.name != preset.name:
             self._engine = None  # drop the previous model before loading another
-            self._engine = Engine(preset)
+            self._engine = Engine(preset, backend=self._backend)
         self._engine.preset = preset
         self._preset = preset
         return self._engine
@@ -126,7 +128,7 @@ class TypeSafeClient:
         return self._calibrated(ctx, kind, question, options, scores / self._preset.tau), tokens
 
     def _digest(self, kind: str, question: Question, options: list[Option]) -> str:
-        return question_digest(self._preset.name, kind, question.instructions, options)
+        return question_digest(model_key(self._preset.name, self._backend), kind, question.instructions, options)
 
     def _head(self, ctx: Context | None, kind, question, options) -> dict | None:
         return ctx.heads.get(self._digest(kind, question, options)) if ctx else None

@@ -7,6 +7,8 @@ import string
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
+
 from ..backbone import Backbone, PromptTemplate
 
 LETTERS = string.ascii_uppercase
@@ -84,14 +86,12 @@ class Prompts:
 
     def label_features(self, labels: list[Label], layers: list[int]):
         """(K, n_layers, d) features of each label, read at the assistant-turn position."""
-        import mlx.core as mx
-
         out = []
         for label in labels:
             t = PromptTemplate.from_user_message(self.backbone, "{input}", use_prefix_cache=False)
             h, _ = t.run(self.task.label_message(label), layers=layers)
-            out.append(mx.stack([h[l] for l in layers]))
-        return mx.stack(out)
+            out.append(np.stack([h[l] for l in layers]))
+        return np.stack(out)
 
 
 def _option_text(marker: str, label: Label) -> str:

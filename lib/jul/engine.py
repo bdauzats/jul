@@ -20,7 +20,6 @@ import string
 from collections import OrderedDict
 from dataclasses import dataclass, field
 
-import mlx.core as mx
 import numpy as np
 
 from .backbone import MODELS, Backbone, PromptTemplate
@@ -80,18 +79,19 @@ class CompiledQuestion:
 @dataclass
 class LetterPass:
     template: PromptTemplate
-    answer_ids: mx.array
+    answer_ids: np.ndarray
     prompt_tokens: int
 
 
 class Engine:
     """Runs a preset's vector method on a backbone, caching everything that is state-independent."""
 
-    def __init__(self, preset: Preset, backbone: Backbone | None = None, max_cached_questions: int = 64):
+    def __init__(self, preset: Preset, backbone: Backbone | None = None, max_cached_questions: int = 64,
+                 backend: str | None = None):
         self.preset = preset
         if backbone is None:
-            MODELS[preset.name] = preset.repo  # presets are the source of truth for repos
-            backbone = Backbone(preset.name)
+            MODELS[preset.name] = preset.repos  # presets are the source of truth for repos
+            backbone = Backbone(preset.name, backend)
         self.backbone = backbone
         self._questions: OrderedDict[tuple, CompiledQuestion] = OrderedDict()
         self._max_cached = max_cached_questions
@@ -123,19 +123,19 @@ class Engine:
     def vector(self, template: PromptTemplate, layer: int, text: str) -> np.ndarray:
         """Hidden state just before the first generated word. The forward stops after `layer`."""
         h, _ = template.run(text, layers=[layer])
-        return np.array(h[layer][: h[layer].shape[0] // 2].astype(mx.float32))
+        return h[layer][: h[layer].shape[0] // 2]
 
     def _center(self, template: PromptTemplate, formulation: Formulation, options_matrix: np.ndarray,
                 context) -> np.ndarray:
         texts = getattr(context, "examples", None) if context is not None else None
         if texts:
-            cached = context.center_for(self.preset, formulation)
+            cached = context.center_for(self.backbone.key, formulation)
             if cached is None:
                 cached = np.mean([self.vector(template, formulation.layer, t) for t in texts], axis=0)
-                context.set_center(self.preset, formulation, cached)
+                context.set_center(self.backbone.key, formulation, cached)
             return cached
         if self.preset.center == "generic":
-            generic = self.preset.generic_center(formulation)
+            generic = self.preset.generic_center(formulation, self.backbone.backend)
             if generic is not None:
                 return generic
         if self.preset.center == "none":
@@ -217,12 +217,12 @@ class Engine:
             ids.append(toks[0])
         if len(set(ids)) != len(ids):
             raise ValueError("Answer markers collide on this tokenizer")
-        return LetterPass(template, mx.array(ids), len(template.prefix_tokens))
+        return LetterPass(template, np.array(ids), len(template.prefix_tokens))
 
     def letter_logits(self, letters: LetterPass, state: str) -> tuple[np.ndarray, int]:
         _, logits = letters.template.run(state, logits=True)
         tokens = letters.prompt_tokens + _state_tokens(letters.template, self.backbone, state)
-        return np.array(logits[letters.answer_ids]), tokens
+        return logits[letters.answer_ids], tokens
 
 
 def _description(context) -> str | None:

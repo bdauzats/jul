@@ -14,8 +14,8 @@ from .primitives import FORMATTERS
 from .task import Label, Prompts, Task
 
 
-def _probs(logits: mx.array, labels: list[str], T: float) -> dict[str, float]:
-    p = np.array(mx.softmax(logits / T))
+def _probs(logits, labels: list[str], T: float) -> dict[str, float]:
+    p = np.array(mx.softmax(mx.array(logits) / T))
     return dict(sorted(zip(labels, p.tolist()), key=lambda kv: -kv[1]))
 
 
@@ -26,7 +26,7 @@ class LogitDecider:
         self.prompts = Prompts(backbone, task)
         if self.prompts.options is None:
             raise ValueError("Approach A supports at most 26 labels")
-        self.ids = mx.array(self.prompts.letter_ids)
+        self.ids = np.array(self.prompts.letter_ids)
         self.labels = task.label_names
         self.T = T
 
@@ -83,7 +83,7 @@ class Decider:
 
     def decide(self, text: str) -> dict[str, float]:
         h, _ = self.template.run(text, layers=self.layers)
-        x = self.norm(mx.stack([h[l] for l in self.layers]))
+        x = self.norm(np.stack([h[l] for l in self.layers]))
         if self.cfg["kind"] == "hybrid":
             logits = mx.exp(self.head.log_scale) * self.head.embed_queries(x[None]) @ self.label_emb.T
         else:

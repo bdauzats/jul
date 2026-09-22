@@ -147,7 +147,7 @@ def cmd_decide(a):
 def main(argv=None):
     p = argparse.ArgumentParser(prog="jul lab")
     sub = p.add_subparsers(required=True)
-    models = dict(nargs="+", default=["minicpm5-2b"], help=f"aliases: {', '.join(MODELS)} (or any mlx-lm repo)")
+    models = dict(nargs="+", default=["minicpm5-2b"], help=f"aliases: {', '.join(MODELS)} (or any repo of the backend)")
 
     s = sub.add_parser("extract")
     s.add_argument("--task", required=True)

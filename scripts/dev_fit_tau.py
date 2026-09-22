@@ -35,7 +35,7 @@ def vecs(tpl, texts):
     out = []
     for s in texts:
         h, _ = t.run(s, layers=layers)
-        out.append({l: np.array(h[l].astype(mx.float32))[: h[l].shape[0] // 2] for l in layers})
+        out.append({l: h[l][: h[l].shape[0] // 2] for l in layers})
     return out
 
 

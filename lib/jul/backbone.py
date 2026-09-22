@@ -1,72 +1,95 @@
-"""MLX backbone: one forward pass, tap hidden states at chosen layers, reuse a cached prompt prefix.
+"""Backbone: one forward pass, tap hidden states at chosen layers, reuse a cached prompt prefix.
 
 The instruction part of every prompt is identical across calls, so its KV cache is computed once
 and each query only pays for its own tokens. When only intermediate layers are needed, the forward
 stops right after the deepest one (the remaining layers are never computed).
+
+The framework lives behind `Backbone`: `backends/mlx.py` (Apple Silicon) and `backends/torch.py`
+(transformers: CUDA, CPU, MPS). Everything above this module only sees numpy arrays.
+`Backbone(name)` picks the backend from `JUL_BACKEND`, else MLX when available, else torch.
 """
 
 from __future__ import annotations
 
+import importlib.util
+import os
+import platform
 import time
 from dataclasses import dataclass
 
-import mlx.core as mx
-from mlx_lm import load
-from mlx_lm.models.cache import can_trim_prompt_cache, make_prompt_cache
+import numpy as np
 
-MODELS = {
-    "minicpm5-2b": "openbmb/MiniCPM5-2B-MLX",
-    "qwen3-0.6b": "mlx-community/Qwen3-0.6B-4bit",
-    "qwen3-1.7b": "mlx-community/Qwen3-1.7B-4bit",
-    "qwen3.5-9b": "mlx-community/Qwen3.5-9B-4bit",
+BACKENDS = ("mlx", "torch")
+
+#: Preset name -> repo per backend. A name missing here is used as the repo itself.
+MODELS: dict[str, dict[str, str]] = {
+    "minicpm5-2b": {"mlx": "openbmb/MiniCPM5-2B-MLX", "torch": "openbmb/MiniCPM5-2B"},
+    "qwen3-0.6b": {"mlx": "mlx-community/Qwen3-0.6B-4bit", "torch": "Qwen/Qwen3-0.6B"},
+    "qwen3-1.7b": {"mlx": "mlx-community/Qwen3-1.7B-4bit", "torch": "Qwen/Qwen3-1.7B"},
+    "qwen3.5-9b": {"mlx": "mlx-community/Qwen3.5-9B-4bit", "torch": "Qwen/Qwen3.5-9B"},
 }
 
 # Layers tapped during extraction, as fractions of the model depth.
 DEFAULT_LAYER_FRACTIONS = (0.25, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
 
 
-class _StopForward(Exception):
-    pass
+def _mlx_available() -> bool:
+    return (platform.system() == "Darwin" and platform.machine() == "arm64"
+            and importlib.util.find_spec("mlx") is not None)
 
 
-class _Tap:
-    """Wraps a transformer block to record its features and optionally halt the forward."""
+def resolve_backend(backend: str | None = None) -> str:
+    backend = backend or os.environ.get("JUL_BACKEND")
+    if backend:
+        if backend not in BACKENDS:
+            raise ValueError(f"Unknown backend {backend!r}. Available: {', '.join(BACKENDS)}")
+        return backend
+    if _mlx_available():
+        return "mlx"
+    if importlib.util.find_spec("torch") is not None:
+        return "torch"
+    raise ImportError("No backend installed: pip install 'jul[mlx]' (Apple Silicon) or 'jul[torch]'")
 
-    def __init__(self, block, idx: int, backbone: "Backbone"):
-        self.block = block
-        self.idx = idx
-        self.bb = backbone
 
-    def __call__(self, *args, **kwargs):
-        h = self.block(*args, **kwargs)
-        if self.idx in self.bb._want:
-            start, end = self.bb._pool
-            # [last token ; mean over the input tokens]
-            self.bb._captured[self.idx] = mx.concatenate([h[:, -1, :], h[:, start:end, :].mean(1)], axis=-1)
-        if self.bb._stop_at == self.idx:
-            raise _StopForward
-        return h
+def model_key(name: str, backend: str) -> str:
+    """Identifies vectors computed by a model on a backend (saved centers, heads, calibrations).
 
-    def __getattr__(self, name):
-        return getattr(self.block, name)
+    MLX keeps the bare name so that contexts saved before backends existed stay valid.
+    """
+    return name if backend == "mlx" else f"{name}@{backend}"
+
+
+def repo_for(name: str, backend: str) -> str:
+    repos = MODELS.get(name)
+    if repos is None:
+        return name
+    if backend not in repos:
+        raise ValueError(f"{name!r} has no {backend} repo")
+    return repos[backend]
 
 
 class Backbone:
-    def __init__(self, name: str):
+    """A causal LM read by the vector method. `Backbone(name)` returns the resolved backend's subclass.
+
+    Subclasses set `tokenizer` (a Hugging Face tokenizer, for `encode` and the chat template) and
+    `n_layers`, and implement `forward` and `cache_prefix`.
+    """
+
+    backend: str = ""
+
+    def __new__(cls, name: str, backend: str | None = None, **kwargs):
+        if cls is Backbone:
+            backend = resolve_backend(backend)
+            if backend == "mlx":
+                from .backends.mlx import MLXBackbone as cls
+            else:
+                from .backends.torch import TorchBackbone as cls
+        return super().__new__(cls)
+
+    def __init__(self, name: str, backend: str | None = None):
         self.name = name
-        self.repo = MODELS.get(name, name)
-        self.model, self.tokenizer = load(self.repo)
-        layers = self.model.layers
-        for i, block in enumerate(layers):
-            layers[i] = _Tap(block, i, self)
-        self.n_layers = len(layers)
-        self._want: set[int] = set()
-        self._stop_at: int | None = None
-        self._captured: dict[int, mx.array] = {}
-        self._pool = (0, 1)
-        lm = getattr(self.model, "language_model", self.model)  # multimodal wrappers (e.g. Qwen3.5) nest the text model
-        self._inner = lm.model
-        self._lm_head = lm.lm_head if hasattr(lm, "lm_head") else self._inner.embed_tokens.as_linear
+        self.repo = repo_for(name, self.backend)
+        self.key = model_key(name, self.backend)
 
     def layer_indices(self, fractions=DEFAULT_LAYER_FRACTIONS) -> list[int]:
         return sorted({max(0, min(self.n_layers - 1, round(f * self.n_layers) - 1)) for f in fractions})
@@ -74,27 +97,19 @@ class Backbone:
     def encode(self, text: str) -> list[int]:
         return self.tokenizer.encode(text, add_special_tokens=False)
 
-    def forward(self, tokens: list[int], cache=None, layers=(), logits=False, pool: tuple[int, int] | None = None):
-        """Run tokens through the model.
+    def forward(self, tokens: list[int], layers=(), logits=False, pool: tuple[int, int] | None = None,
+                prefix=None) -> tuple[dict[int, np.ndarray], np.ndarray | None]:
+        """Run tokens through the model, after `prefix` (from `cache_prefix`) when given.
 
-        Returns ({layer: (2d,) features}, last-token logits or None). Features are the last-token hidden
-        state concatenated with the mean hidden state over positions pool=(start, end) of `tokens`.
+        Returns ({layer: (2d,) float32 features}, float32 last-token logits or None). Features are the
+        last-token hidden state concatenated with the mean hidden state over positions
+        pool=(start, end) of `tokens`. The prefix is left as it was, ready for the next query.
         """
-        self._want = set(layers)
-        self._pool = pool or (0, len(tokens))
-        self._stop_at = None if logits else (max(layers) if layers else None)
-        self._captured = {}
-        x = mx.array(tokens)[None]
-        out = None
-        try:
-            h = self._inner(x, cache=cache)
-            if logits:
-                out = self._lm_head(h[:, -1:, :])[0, 0].astype(mx.float32)
-        except _StopForward:
-            pass
-        captured = {k: v[0] for k, v in self._captured.items()}
-        mx.eval(list(captured.values()) + ([out] if out is not None else []))
-        return captured, out
+        raise NotImplementedError
+
+    def cache_prefix(self, tokens: list[int]):
+        """Run `tokens` once and keep the model state after them, for `forward(prefix=...)`."""
+        raise NotImplementedError
 
 
 @dataclass
@@ -123,41 +138,17 @@ class PromptTemplate:
     def __post_init__(self):
         self.prefix_tokens = self.backbone.encode(self.prefix_text)
         self._n_suffix = len(self.backbone.encode(self.suffix_text))
-        self._cache = None
-        self._snapshot = None
+        self._prefix = None
         if self.use_prefix_cache and self.prefix_tokens:
-            cache = make_prompt_cache(self.backbone.model)
-            self.backbone.forward(self.prefix_tokens, cache=cache, logits=True)
-            mx.eval([c.state for c in cache])
-            if can_trim_prompt_cache(cache):
-                self._cache = cache  # attention KV cache: trimmed back to the prefix after each query
-            else:
-                # Recurrent state (e.g. Gated DeltaNet in Qwen3.5) cannot be trimmed: keep a copy of the
-                # state after the prefix and start each query from it. Layers replace their state
-                # arrays rather than writing into them, so the copy is never modified.
-                self._snapshot = [tuple(c.state) for c in cache]
-
-    def _restored_cache(self):
-        cache = make_prompt_cache(self.backbone.model)
-        for c, state in zip(cache, self._snapshot):
-            c.state = list(state)
-        return cache
+            self._prefix = self.backbone.cache_prefix(self.prefix_tokens)
 
     def run(self, text: str, layers=(), logits=False):
         query = self.backbone.encode(text + self.suffix_text)
         n_input = max(1, len(query) - self._n_suffix)
-        if self._snapshot is not None:
-            return self.backbone.forward(query, cache=self._restored_cache(), layers=layers, logits=logits, pool=(0, n_input))
-        if self._cache is None:
+        if self._prefix is None:
             p = len(self.prefix_tokens)
             return self.backbone.forward(self.prefix_tokens + query, layers=layers, logits=logits, pool=(p, p + n_input))
-        try:
-            return self.backbone.forward(query, cache=self._cache, layers=layers, logits=logits, pool=(0, n_input))
-        finally:
-            n = len(self.prefix_tokens)
-            for c in self._cache:
-                if c.offset > n:
-                    c.trim(c.offset - n)
+        return self.backbone.forward(query, layers=layers, logits=logits, pool=(0, n_input), prefix=self._prefix)
 
 
 def timed(fn, *args, **kwargs):
