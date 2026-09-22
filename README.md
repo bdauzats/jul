@@ -1,10 +1,12 @@
 # JuL — Juste un LLM
 
-Jev is a hosted _System One model_. This is just an LLM, on your Mac.
+A headless decision runtime: same typed-decision interface as Jev's SDK, but the model underneath is
+yours to pick, swap, or fine-tune. No hosted API, no fixed backbone — point it at any local LLM (MLX
+or PyTorch) and it becomes a calibrated decision head for that model.
 
-Typed decisions with the interface of the TypeSafe (Jev) Python SDK — same imports, same calls, same
-response shapes. Everything runs locally, through MLX on a Mac or PyTorch anywhere else: no API key,
-no network, and not one token generated.
+Jev is a hosted _System One model_. JuL is the same idea, un-hosted and un-fixed: same imports, same
+calls, same response shapes as the TypeSafe (Jev) Python SDK — but everything runs on your machine, on
+whichever backbone you choose, and not one token gets generated.
 
 That last part is not a limitation. JuL is stopped one step before its first syllable and the answer
 is taken straight out of its head: no monologue, no reasoning trace, no opinion on the matter —
