@@ -218,7 +218,7 @@ rows below it receive task data at call time and Jev receives none.
 
 | Zero-shot                      |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |       p50 |
 | ------------------------------ | -------: | --------: | -------: | --------: | --------: | --------: |
-| jul `minicpm5-2b-decision` ¹   |     0.91 |      0.79 | **0.69** | **0.796** |     0.133 |    217 ms |
+| jul `minicpm5-2b-decision` ¹   | **0.91** |      0.79 | **0.69** | **0.796** |     0.133 |    217 ms |
 | Jev (published)                | **0.91** |  **0.87** |     0.48 |     0.753 |     0.156 |    246 ms |
 | jul `qwen3.5-9b`               |     0.79 |      0.74 |     0.45 |     0.660 |     0.175 |    273 ms |
 | jul `minicpm5-2b`              |     0.80 |      0.59 |     0.46 |     0.617 | **0.113** | **64 ms** |
@@ -309,7 +309,13 @@ Its row sits in the table above, measured on the same 300 rows with the same met
 - **Banking77 stays 8 points behind Jev (0.79 against 0.87) although it trained on that one too.**
   Seventy-two fine-grained intents remain the hard part — the vector method scores 0.59 there.
 - AG News is a tie, calibration is better than Jev's (0.133 against 0.156) and latency comparable.
-- It is 3× slower than `minicpm5-2b` here, because Banking77's 72 options are re-read on every request.
+- **AG News 111 ms, Emotion 111 ms, Banking77 431 ms** — the 217 ms above is their mean. `minicpm5-2b`
+  answers all three in 64 ms, and the reason is structural: the vector method encodes each option once
+  and caches it, so a call only pays for its own text, and it stops the forward at layer 39/40. The
+  decision model re-reads the instructions and the whole option list on every call, and runs all 42
+  layers, since it reads the last one. Cost therefore scales with the options: four labels cost 111 ms,
+  seventy-two cost 431 ms. Caching them would need the format to put the options before the text, which
+  means retraining.
 
 ## Context — what the data looks like
 
