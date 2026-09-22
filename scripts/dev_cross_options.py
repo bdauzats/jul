@@ -22,7 +22,6 @@ import sys
 import time
 from pathlib import Path
 
-import mlx.core as mx
 import numpy as np
 from mlx_lm.models.cache import make_prompt_cache
 
@@ -103,7 +102,7 @@ for ds in DEV:
     opts = [l.rstrip(" .") for l in labels]
     names = ", ".join(short_names(labels))
     texts = [r["text"] for r in rows]
-    acc = lambda S: float((S.argmax(1) == y).mean())
+    acc = lambda S, y=y: float((S.argmax(1) == y).mean())
 
     qo = QO.replace("{q}", QUESTION).replace("{o}", names)
     L2 = encode(qo, L_QO, labels)

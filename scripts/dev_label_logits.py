@@ -17,7 +17,6 @@ import json
 import sys
 from pathlib import Path
 
-import mlx.core as mx
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -87,7 +86,7 @@ for ds in DEV:
     C = (cos(X1, L1, generic_center) + cos(X2, L2, L2.mean(0))) / 2 / preset.tau
     lp = {"one": label_logp(P1, toks), "qo": label_logp(P2, toks)}
     lp["both"] = (lp["one"] + lp["qo"]) / 2
-    acc = lambda S: float((S.argmax(1) == y).mean())
+    acc = lambda S, y=y: float((S.argmax(1) == y).mean())
     res.setdefault(("cosine only", 0), {})[ds] = acc(C)
     for src, P in lp.items():
         res.setdefault((f"logits {src} only", 0), {})[ds] = acc(P + 1e-6 * C)  # cosine breaks ties

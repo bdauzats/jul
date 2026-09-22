@@ -577,4 +577,8 @@ end — that is the whole point of keeping the two apart.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+The decision-model format and its pointer readout come from [Kev](https://github.com/jaredpalmer/kev)
+(Jared Palmer, Apache 2.0), and `minicpm5-2b-decision` is [MiniCPM5-2B](https://huggingface.co/openbmb/MiniCPM5-2B)
+(OpenBMB, Apache 2.0) trained with Kev's code on its data plus ours.

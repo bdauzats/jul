@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Juste Un LLM - local typed decisions with the interface of the TypeSafe (Jev) SDK"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = "Apache-2.0"
 license-files = ["LICENSE"]
 # The model runs on a backend installed as an extra: [mlx] on Apple Silicon, [torch] anywhere else.
 dependencies = ["numpy>=1.24"]

@@ -27,7 +27,6 @@ import json
 import sys
 from pathlib import Path
 
-import mlx.core as mx
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -83,7 +82,7 @@ for ds in DEV:
     rows = [json.loads(l) for l in open(ROOT / "data" / "dev" / f"{ds}.jsonl")][:N]
     labels, y = rows[0]["labels"], np.array([r["target_index"] for r in rows])
     opts = [l.rstrip(" .") for l in labels]
-    fill = lambda t: t.replace("{q}", QUESTION).replace("{o}", ", ".join(short_names(labels)))
+    fill = lambda t, labels=labels: t.replace("{q}", QUESTION).replace("{o}", ", ".join(short_names(labels)))
     texts = [r["text"] for r in rows]
     unl = [json.loads(l)["text"] for l in open(ROOT / "data" / "dev" / f"{ds}.unlabeled.jsonl")][:N]
     X_ow, X_qo = encode(TEXT_OW, L_OW, texts), encode(fill(TEXT_QO), L_QO, texts)
@@ -91,7 +90,7 @@ for ds in DEV:
     C_qo = {"generic": encode(fill(TEXT_QO), L_QO, generic).mean(0), "task": encode(fill(TEXT_QO), L_QO, unl).mean(0)}
     Lo = {v: encode(t, L_OW, opts) for v, t in OPT_OW.items()}
     Lq = {v: encode(fill(t), L_QO, opts) for v, t in OPT_QO.items()}
-    acc = lambda S: float((S.argmax(1) == y).mean())
+    acc = lambda S, y=y: float((S.argmax(1) == y).mean())
     for mode in ("shared", "split generic", "split task"):
         if mode == "shared":
             S_ow = {v: cos(X_ow, L, generic_center) for v, L in Lo.items()}

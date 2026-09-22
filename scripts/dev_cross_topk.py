@@ -14,7 +14,6 @@ import sys
 import time
 from pathlib import Path
 
-import mlx.core as mx
 import numpy as np
 from mlx_lm.models.cache import make_prompt_cache
 
@@ -112,7 +111,7 @@ for ds in DEV:
     S, sec = cross_scores(prefix, texts, opts, subsets)
     bias = cross_scores(prefix, generic, opts, [range(len(opts))] * len(generic))[0].mean(0)
     saved[ds] = {"cos": C.tolist(), "cross": np.nan_to_num(S, nan=-1e9).tolist(), "bias": bias.tolist(), "y": y.tolist()}
-    acc = lambda p: float((p == y).mean())
+    acc = lambda p, y=y: float((p == y).mean())
     res.setdefault("cosine only (today)", {})[ds] = acc(C.argmax(1))
     for label_k in sorted({2, 3, 5, K}):
         kk = min(label_k, len(opts))  # the key keeps the requested k, so every dataset fills every row
