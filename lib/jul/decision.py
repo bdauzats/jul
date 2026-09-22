@@ -1,0 +1,193 @@
+"""The pointer method: a model trained to decide, read at its own delimiter tokens.
+
+A decision model (for example `minicpm5-2b-decision`: MiniCPM5-2B with a merged LoRA and a pointer head,
+JOURNAL §9 duovicies) was trained on one input format. That format lives next to the weights, in
+`decision.json`, so the code here knows nothing about any particular model:
+
+    tokens    the delimiter tokens (state, question, option_open, option_close, decide)
+    layout    how a request is laid out: a prefix holding the state, then one branch per question
+    readout   which hidden states are compared: the question token against each option token
+    head      the pointer head's weights file, its dimension and its temperature
+    limits    the longest state and branch the model was trained on
+
+The state is encoded once and kept as a cached prefix; every question of a call continues from it, so
+questions never see each other. Scores are `k(h_option) . q(h_question) / sqrt(dim)`, divided by the
+temperature, then a softmax.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from .types import NOUL_DEFAULTS, Option
+
+SPEC_FILE = "decision.json"
+
+
+def render(v: Any, indent: int = 0) -> str:
+    """str | object | array -> the text the model was trained on (field names kept as labels)."""
+    pad = "  " * indent
+    if v is None:
+        return ""
+    if isinstance(v, (str, int, float, bool)):
+        return str(v)
+    if isinstance(v, list):
+        return "\n".join(f"{pad}- {render(x, indent + 1).lstrip()}" for x in v)
+    return "\n".join(f"{pad}{k}:\n{render(x, indent + 1)}" if isinstance(x, (dict, list)) else f"{pad}{k}: {render(x)}"
+                     for k, x in v.items())
+
+
+@dataclass(frozen=True)
+class DecisionSpec:
+    """The content of a model's decision.json."""
+
+    tokens: dict[str, str]
+    layout: dict[str, list[str]]
+    option_text: dict[str, str]
+    noul_options: tuple[str, str]           # names for (false, true)
+    escape: tuple[str, str] | None          # (pattern, replacement) applied to user text
+    add_special_tokens: bool
+    question_token: str
+    option_token: str
+    head_file: str
+    query: str
+    key: str
+    dim: int
+    temperature: float
+    max_state_tokens: int
+    max_branch_tokens: int
+    directory: Path
+
+    @classmethod
+    def load(cls, directory: str | Path, file: str | Path | None = None) -> "DecisionSpec":
+        """`directory` holds the weights and the head; `file` overrides where decision.json is read."""
+        directory = Path(directory)
+        d = json.loads(Path(file or directory / SPEC_FILE).read_text())
+        if d.get("method") != "pointer":
+            raise ValueError(f"{directory / SPEC_FILE}: unsupported method {d.get('method')!r}")
+        esc = d.get("escape_user_specials")
+        head, readout, limits = d["head"], d["readout"], d["limits"]
+        return cls(tokens=d["tokens"], layout=d["layout"], option_text=d["option_text"],
+                   noul_options=tuple(d["noul_options"]),
+                   escape=(esc["pattern"], esc["replace"]) if esc else None,
+                   add_special_tokens=bool(d.get("add_special_tokens", False)),
+                   question_token=readout["question_token"], option_token=readout["option_token"],
+                   head_file=head["file"], query=head["query"], key=head["key"], dim=int(head["dim"]),
+                   temperature=float(head["temperature"]),
+                   max_state_tokens=int(limits["max_state_tokens"]),
+                   max_branch_tokens=int(limits["max_branch_tokens"]), directory=directory)
+
+
+def has_spec(directory: str | Path) -> bool:
+    return (Path(directory) / SPEC_FILE).exists()
+
+
+class PointerReader:
+    """Encodes requests in the model's format and scores options with its pointer head."""
+
+    def __init__(self, backbone, spec: DecisionSpec):
+        self.backbone, self.spec = backbone, spec
+        tok = backbone.tokenizer
+        self.ids = {name: tok.convert_tokens_to_ids(t) for name, t in spec.tokens.items()}
+        for name, t in spec.tokens.items():
+            if tok.convert_ids_to_tokens(self.ids[name]) != t:
+                raise ValueError(f"delimiter {t!r} is not a single token of {backbone.name}")
+        self._escape = (re.compile(spec.escape[0]), spec.escape[1]) if spec.escape else None
+        self._head: tuple[np.ndarray, ...] | None = None
+
+    @property
+    def head(self) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """(Wq, bq, Wk, bk), loaded on first use."""
+        if self._head is None:
+            w = np.load(self.spec.directory / self.spec.head_file)
+            s = self.spec
+            self._head = (w[f"{s.query}_weight"], w[f"{s.query}_bias"], w[f"{s.key}_weight"], w[f"{s.key}_bias"])
+        return self._head
+
+    # --- encoding -----------------------------------------------------------------------------
+
+    def text_tokens(self, text: str) -> list[int]:
+        if self._escape:
+            text = self._escape[0].sub(self._escape[1], text)
+        return self.backbone.tokenizer.encode(text, add_special_tokens=self.spec.add_special_tokens)
+
+    def _pieces(self, layout: list[str], values: dict[str, Any]) -> list[int]:
+        """A layout piece is a delimiter name or a {field}: a text, or a token list already built."""
+        out: list[int] = []
+        for piece in layout:
+            if piece.startswith("{"):
+                v = values[piece[1:-1]]
+                out += v if isinstance(v, list) else self.text_tokens(v)
+            else:
+                out.append(self.ids[piece])
+        return out
+
+    def option_texts(self, kind: str, options: list[Option]) -> tuple[list[str], list[int]]:
+        """(texts in the order the model was trained on, and for each the index of the jul option)."""
+        if kind == "noul":
+            by_key = {o.key: o for o in options}
+            order = ["false", "true"]
+            texts = []
+            for name, key in zip(self.spec.noul_options, order):
+                desc = by_key[key].description
+                texts.append(self._option(name, None if desc == NOUL_DEFAULTS[key] else desc))
+            return texts, [next(i for i, o in enumerate(options) if o.key == k) for k in order]
+        if kind == "score":
+            return [o.description for o in options], list(range(len(options)))
+        return [self._option(o.key, o.description or None) for o in options], list(range(len(options)))
+
+    def _option(self, name: str, description: str | None) -> str:
+        t = self.spec.option_text
+        if not description:
+            return t["without_description"].format(name=name)
+        return t["with_description"].format(name=name, description=render(description))
+
+    def encode_state(self, state: Any) -> list[int]:
+        text = state if isinstance(state, str) else render(state)
+        return self._pieces(self.spec.layout["prefix"], {"state": text})[: self.spec.max_state_tokens]
+
+    def encode_question(self, instructions: str, option_texts: list[str]) -> tuple[list[int], int, list[int]]:
+        """-> branch tokens, offset of the question token, offsets of each option token."""
+        spans = [self._pieces(self.spec.layout["option"], {"option": t}) for t in option_texts]
+        mark = self.ids[self.spec.option_token]
+        branch, opt_idx = [], []
+        for piece in self.spec.layout["branch"]:
+            if piece == "{options}":
+                for sp in spans:
+                    opt_idx.append(len(branch) + len(sp) - 1 - sp[::-1].index(mark))
+                    branch += sp
+            else:
+                branch += self._pieces([piece], {"instructions": instructions})
+        if len(branch) > self.spec.max_branch_tokens:
+            raise ValueError(f"question too long for {self.backbone.name}: {len(branch)} tokens "
+                             f"(the model was trained on at most {self.spec.max_branch_tokens})")
+        q = self.ids[self.spec.question_token]
+        return branch, len(branch) - 1 - branch[::-1].index(q), opt_idx
+
+    # --- scoring ------------------------------------------------------------------------------
+
+    def logits(self, state: Any, questions: list[tuple[str, str, list[Option]]]) -> tuple[list[np.ndarray], int]:
+        """questions: (kind, instructions, options). Returns logits in jul's option order, already divided
+        by the model's temperature, and the number of tokens run."""
+        prefix_tokens = self.encode_state(state)
+        prefix = self.backbone.cache_prefix(prefix_tokens)
+        out, spent = [], len(prefix_tokens)
+        for kind, instructions, options in questions:
+            texts, index = self.option_texts(kind, options)
+            branch, q_idx, opt_idx = self.encode_question(instructions, texts)
+            h = self.backbone.last_hidden(branch, prefix=prefix)
+            Wq, bq, Wk, bk = self.head
+            qv = h[q_idx] @ Wq.T + bq
+            kv = h[opt_idx] @ Wk.T + bk
+            z = (kv @ qv) / np.sqrt(self.spec.dim) / self.spec.temperature
+            ordered = np.empty(len(options), dtype=np.float32)
+            ordered[index] = z
+            out.append(ordered)
+            spent += len(branch)
+        return out, spent

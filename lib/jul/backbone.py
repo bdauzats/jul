@@ -16,6 +16,7 @@ import os
 import platform
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -110,6 +111,20 @@ class Backbone:
     def cache_prefix(self, tokens: list[int]):
         """Run `tokens` once and keep the model state after them, for `forward(prefix=...)`."""
         raise NotImplementedError
+
+    def last_hidden(self, tokens: list[int], prefix=None) -> np.ndarray:
+        """(len(tokens), d) float32: the last layer's hidden states after the final norm, for every token
+        of `tokens` (run after `prefix` when given). The prefix is left as it was. Used by the pointer
+        method (jul/decision.py)."""
+        raise NotImplementedError
+
+    @property
+    def model_dir(self) -> Path:
+        """Local directory of the weights (downloaded on first access for a Hub repo)."""
+        if Path(self.repo).is_dir():
+            return Path(self.repo)
+        from huggingface_hub import snapshot_download
+        return Path(snapshot_download(self.repo))
 
 
 @dataclass

@@ -94,6 +94,20 @@ class TorchBackbone(Backbone):
         _, _, cache = self._run(tokens, None, logits=True, use_cache=True)
         return _Prefix(len(tokens), cache, _croppable(cache))
 
+    @torch.inference_mode()
+    def last_hidden(self, tokens, prefix: _Prefix | None = None):
+        self._want, self._stop_at = set(), None
+        cache = None if prefix is None else (prefix.cache if prefix.croppable else copy.deepcopy(prefix.cache))
+        try:
+            ids = torch.tensor([tokens], device=self.device)
+            h = self._decoder(input_ids=ids, past_key_values=cache, use_cache=cache is not None).last_hidden_state
+            return h[0].float().cpu().numpy()
+        finally:
+            if prefix is not None and prefix.croppable:
+                extra = prefix.cache.get_seq_length() - prefix.n
+                if extra > 0:
+                    prefix.cache.crop(-extra)
+
     def _run(self, tokens, cache=None, layers=(), logits=False, pool=None, use_cache=None):
         self._want = set(layers)
         self._pool = pool or (0, len(tokens))

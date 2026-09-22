@@ -55,6 +55,9 @@ class Preset:
     asset_dir: Path = field(default=ASSETS, compare=False)
     #: What `jul models add` measured, for `jul models` to show. Not used at inference.
     calibration: dict | None = field(default=None, compare=False, hash=False)
+    #: "vector" (formulations, layers, tau) or "pointer": a decision model read with the format stored
+    #: in its own decision.json (jul/decision.py); formulations and tau are then unused.
+    method: str = "vector"
 
     @property
     def layers(self) -> list[int]:
@@ -83,7 +86,7 @@ class Preset:
                 "tau": self.tau, "center": self.center,
                 "one_word": list(self.one_word) if self.one_word else None,
                 "latency_ms": self.latency_ms, "quality": self.quality, "notes": self.notes,
-                "calibration": self.calibration}
+                "calibration": self.calibration, "method": self.method}
 
     @classmethod
     def from_json(cls, d: dict, asset_dir: Path) -> "Preset":
@@ -94,7 +97,7 @@ class Preset:
                    one_word=tuple(d["one_word"]) if d.get("one_word") else None,
                    latency_ms=d.get("latency_ms", "?"), quality=d.get("quality", ""),
                    notes=d.get("notes", ""), backend=d.get("backend"), asset_dir=asset_dir,
-                   calibration=d.get("calibration"))
+                   calibration=d.get("calibration"), method=d.get("method", "vector"))
 
 
 def center_asset_name(name: str, backend: str, formulation: str) -> str:
@@ -116,6 +119,16 @@ def save_preset(preset: Preset, home: Path | None = None) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(preset.to_json(), indent=2, ensure_ascii=False) + "\n")
     return path
+
+
+def pointer_preset(name: str, repo: str, backend: str) -> Preset:
+    """A decision model's preset: nothing to fit, its format and temperature live in its decision.json."""
+    from .decision import DecisionSpec
+    spec = DecisionSpec.load(repo)
+    return Preset(name=name, repo=repo if backend == "mlx" else "", backend=backend,
+                  torch_repo=repo if backend == "torch" else None, formulations=(), tau=1.0,
+                  latency_ms="?", quality="decision model (pointer method)", method="pointer",
+                  notes=f"format and temperature ({spec.temperature:.3f}) read from {repo}/decision.json")
 
 
 def fitted_presets(home: Path | None = None) -> list[Preset]:

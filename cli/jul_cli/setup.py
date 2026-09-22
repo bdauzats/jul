@@ -19,6 +19,7 @@ import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 from jul.backbone import BACKENDS
 from jul.presets import DEFAULT_MODEL
@@ -102,11 +103,18 @@ def ensure_preset(model: str, backend: str):
         raise SystemExit(f"{preset.name!r} has no {backend} weights. "
                          f"Fit it for {backend} with: jul models add {preset.name} --backend {backend}")
     origin = "fitted on " + preset.backend if preset.backend else "built-in"
-    _step("preset", f"{preset.name} ({origin}): tau {preset.tau}, center {preset.center}")
+    settings = ("pointer method, from its decision.json" if preset.method == "pointer"
+                else f"tau {preset.tau}, center {preset.center}")
+    _step("preset", f"{preset.name} ({origin}): {settings}")
     return preset, repo
 
 
 def ensure_weights(repo: str) -> None:
+    if Path(repo).is_dir():
+        if not weights_cached(repo):
+            raise SystemExit(f"{repo} holds no .safetensors weights")
+        _step("weights", f"{repo} (local directory)")
+        return
     from huggingface_hub import snapshot_download
     from huggingface_hub.errors import LocalEntryNotFoundError
     try:
@@ -120,6 +128,8 @@ def ensure_weights(repo: str) -> None:
 
 
 def weights_cached(repo: str) -> bool:
+    if Path(repo).is_dir():   # a local model directory (e.g. a decision model added with `jul models add`)
+        return any(Path(repo).glob("*.safetensors"))
     try:
         from huggingface_hub import snapshot_download
         from huggingface_hub.errors import LocalEntryNotFoundError
