@@ -264,19 +264,26 @@ first use, one at a time (Qwen3.5-9B is about 5.5 GB).
 (BTZSC, 200 examples each), both models read through this library (`scripts/dev_decision_jul.py` in the
 research repo), on an M4 Pro (24 GB) on mains power:
 
-| Development set     | `minicpm5-2b` (vectors) | `minicpm5-2b-decision` |
-| ------------------- | ----------------------: | ---------------------: |
-| FinancialPhraseBank |        0.705 / 105 ms   |   **0.755** / **65 ms** |
-| Yahoo Topics        |        0.450 / 203 ms   |   **0.610** / 140 ms   |
-| Empathetic          |        0.345 / 208 ms   |   **0.395** / 208 ms   |
-| Massive (59 options)|    **0.670** / **63 ms**|       0.665 / 613 ms   |
-| **Mean**            |                   0.542 |              **0.606** |
+Cells are accuracy / ECE (lower is better) / p50 latency.
+
+| Development set      |   `minicpm5-2b` (vectors) |      `minicpm5-2b-decision` |
+| -------------------- | ------------------------: | --------------------------: |
+| FinancialPhraseBank  |   0.705 / 0.129 / 105 ms  | **0.755** / 0.127 / **65 ms** |
+| Yahoo Topics         |   0.450 / **0.045** / 203 ms | **0.610** / 0.107 / 140 ms |
+| Empathetic           |   0.345 / 0.147 / 208 ms  | **0.395** / **0.134** / 208 ms |
+| Massive (59 options) | **0.670** / **0.114** / **63 ms** |   0.665 / 0.241 / 613 ms |
+| **Mean**             |             0.542 / 0.109 |           **0.606** / 0.152 |
 
 - **+6 points**, and the ranking holds whichever way the options are written (short names, as above, or
   the full label sentences: 0.542 against 0.613).
 - **Latency depends on the options.** The vector method encodes them once and caches them; the decision
   model re-reads all of them on every request. Three short options: 65 ms against 105. Fifty-nine long
   ones: 613 ms against 63.
+- **Calibration is the one place it loses.** Its probabilities come from a temperature (1.954) fitted
+  once, on data of the sources it was trained on; the vector method's tau was fitted on these very dev
+  sets. Mean ECE 0.152 against 0.109, and Massive is the bad one at 0.241 — quantizing to 4 bits moves
+  probabilities by up to 0.3, enough to flip a borderline decision. Fit a `Context` calibration on your
+  own data if you need the probabilities themselves, not only the answer.
 - On the data it was trained on it stands between the two published Kev models (`transfer-v4`, sources
   never trained on: 0.721, against 0.652 for Kev-0.8B and 0.797 for Kev-4B; Jev 0.857).
 - **Its training mix includes AG News, Banking77 and Emotion**, the three datasets of the Jev benchmark.
