@@ -136,6 +136,13 @@ fit, no layer to choose and no tau, so the command returns at once. The API is t
 question types go through the same format. The state is encoded once per call and every question
 continues from it, so questions never see each other.
 
+The state is paid once per call: a ticket with four questions (two `Choice`, a `Noul` and a `Score`)
+answers in **180 ms** on an M4 Pro, against 65 ms for the first question alone. What costs is the
+options — they are re-read on every request — so a three-option question runs in 65 ms where a
+fifty-nine-option one takes 613 ms. Weights: [`bdauzats/minicpm5-2b-decision-mlx-4bit`](https://huggingface.co/bdauzats/minicpm5-2b-decision-mlx-4bit)
+(MLX, 1.3 GB) and [`bdauzats/minicpm5-2b-decision`](https://huggingface.co/bdauzats/minicpm5-2b-decision)
+(PyTorch, bf16).
+
 Two differences with the presets above: `autotune(...)` does not apply (its heads are trained on the
 vectors of the other method, and such a model needs a full fine-tune instead), and a state longer than
 the limit in its `decision.json` is truncated rather than stretched.
@@ -255,7 +262,7 @@ first use, one at a time (Qwen3.5-9B is about 5.5 GB).
 
 `minicpm5-2b-decision` has **not** been run on the Jev benchmark. Here are the four development sets
 (BTZSC, 200 examples each), both models read through this library (`scripts/dev_decision_jul.py` in the
-research repo), on an M4 Pro on mains power:
+research repo), on an M4 Pro (24 GB) on mains power:
 
 | Development set     | `minicpm5-2b` (vectors) | `minicpm5-2b-decision` |
 | ------------------- | ----------------------: | ---------------------: |
