@@ -105,3 +105,11 @@ def test_mlx_gets_the_rope_base_that_transformers_5_moved(tmp_path):
     assert _rope_fix(str(tmp_path)) == {"rope_theta": 5000000}
     (tmp_path / "config.json").write_text(json.dumps({"rope_theta": 10000, "rope_parameters": {"rope_theta": 10000}}))
     assert _rope_fix(str(tmp_path)) is None
+
+
+def test_a_decision_model_is_recognised_by_its_spec_file(tmp_path):
+    """Without this, `jul models add` would run the vector calibration on a decision model."""
+    from jul.decision import spec_source
+    assert spec_source(str(tmp_path)) is None
+    (tmp_path / "decision.json").write_text("{}")
+    assert spec_source(str(tmp_path)) == str(tmp_path.resolve())

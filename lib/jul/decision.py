@@ -84,8 +84,19 @@ class DecisionSpec:
                    max_branch_tokens=int(limits["max_branch_tokens"]), directory=directory)
 
 
-def has_spec(directory: str | Path) -> bool:
-    return (Path(directory) / SPEC_FILE).exists()
+def spec_source(repo: str) -> str | None:
+    """Where this model's decision.json lives: the directory itself, or the Hub repo holding one.
+
+    Returns None for an ordinary model, which is then fitted by `jul models add` as usual.
+    """
+    if Path(repo).is_dir():
+        return str(Path(repo).resolve()) if (Path(repo) / SPEC_FILE).exists() else None
+    try:
+        from huggingface_hub import hf_hub_download
+        hf_hub_download(repo, SPEC_FILE)
+    except Exception:
+        return None
+    return repo
 
 
 class PointerReader:

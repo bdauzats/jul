@@ -124,7 +124,8 @@ def save_preset(preset: Preset, home: Path | None = None) -> Path:
 def pointer_preset(name: str, repo: str, backend: str) -> Preset:
     """A decision model's preset: nothing to fit, its format and temperature live in its decision.json."""
     from .decision import DecisionSpec
-    spec = DecisionSpec.load(repo)
+    from huggingface_hub import snapshot_download
+    spec = DecisionSpec.load(repo if Path(repo).is_dir() else snapshot_download(repo, allow_patterns=["*.json", "*.npz"]))
     return Preset(name=name, repo=repo if backend == "mlx" else "", backend=backend,
                   torch_repo=repo if backend == "torch" else None, formulations=(), tau=1.0,
                   latency_ms="?", quality="decision model (pointer method)", method="pointer",

@@ -247,11 +247,12 @@ def cmd_models_add(a):
     from jul.calibrate import CalibrationError, calibrate
     if not a.name:
         raise SystemExit("models add needs a name")
-    from jul.decision import has_spec
-    if a.repo and Path(a.repo).is_dir() and has_spec(a.repo):
+    from jul.decision import spec_source
+    source = spec_source(a.repo) if a.repo else None
+    if source:
         from jul.backbone import resolve_backend
         from jul.presets import pointer_preset, save_preset
-        preset = pointer_preset(a.name, str(Path(a.repo).resolve()), resolve_backend(a.backend))
+        preset = pointer_preset(a.name, source, resolve_backend(a.backend))
         path = save_preset(preset)
         print(f"{a.name}: decision model on {preset.backend}, read with its decision.json (nothing to fit) -> {path}")
         print(f"\nUse it: jul ask ... --model {a.name} --backend {preset.backend}")

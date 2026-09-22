@@ -24,12 +24,13 @@ def _rope_fix(repo: str) -> dict | None:
     (JOURNAL §9 duovicies). Pass the right value when a converted config has only the new key."""
     path = Path(repo) / "config.json"
     if not path.exists():
-        # a Hub repo: read the cached config only (mlx-lm's load downloads it first when needed)
-        from huggingface_hub import try_to_load_from_cache
+        # a Hub repo: the cached config, else fetch that one file (1 KB, before the weights)
+        from huggingface_hub import hf_hub_download, try_to_load_from_cache
         cached = try_to_load_from_cache(repo, "config.json")
-        if not isinstance(cached, str):
+        try:
+            path = Path(cached if isinstance(cached, str) else hf_hub_download(repo, "config.json"))
+        except Exception:
             return None
-        path = Path(cached)
     config = json.loads(path.read_text())
     theta = (config.get("rope_parameters") or {}).get("rope_theta")
     return {"rope_theta": theta} if theta and "rope_theta" not in config else None
