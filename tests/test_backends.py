@@ -49,7 +49,7 @@ def test_what_mlx_learned_is_not_reused_by_torch():
 
 
 def test_a_backend_without_its_own_generic_center_falls_back_to_the_mlx_one():
-    preset = resolve("minicpm5-2b")
+    preset = resolve("qwen3.5-9b")
     f = preset.formulations[0]
     assert np.array_equal(preset.generic_center(f, "torch"), preset.generic_center(f))
 

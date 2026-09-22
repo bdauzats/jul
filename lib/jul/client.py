@@ -56,7 +56,8 @@ class TypeSafeClient:
     # --- model handling -----------------------------------------------------------------------
 
     def _resolve_preset(self, model: str | None) -> Preset:
-        return one_word_preset(model) if self._one_word_only else resolve(model)
+        return (one_word_preset(model, self._backend) if self._one_word_only
+                else resolve(model, self._backend))
 
     def _engine_for(self, model: str | None) -> Engine:
         preset = self._resolve_preset(model) if model else self._preset

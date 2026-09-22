@@ -1,0 +1,67 @@
+{
+  "name": "minicpm5-2b",
+  "repos": {
+    "torch": "openbmb/MiniCPM5-2B"
+  },
+  "backend": "torch",
+  "formulations": [
+    {
+      "name": "one_word",
+      "template": "This text: \"{state}\" means in one word: \"",
+      "layer": 41
+    },
+    {
+      "name": "question_options",
+      "template": "{instructions}\nPossible answers: {options}.\nText: \"{state}\"\nIn one word, the answer is: \"",
+      "layer": 37
+    }
+  ],
+  "tau": 0.04381,
+  "center": "generic",
+  "one_word": [
+    37,
+    0.03975
+  ],
+  "latency_ms": "~155",
+  "quality": "dev accuracy 0.540 ± 0.035 (n=200); not measured on the Jev bench",
+  "notes": "Fitted by `jul models add` on 2026-09-22.",
+  "calibration": {
+    "layers": {
+      "one_word": 41,
+      "question_options": 37,
+      "one_word_only": 37
+    },
+    "center": "generic",
+    "tau": 0.043805317199998264,
+    "tau_one_word": 0.03975009964560149,
+    "tau_task_center": 0.04132507636642313,
+    "dev_accuracy": 0.54,
+    "dev_accuracy_stderr": 0.035242020373412196,
+    "dev_accuracy_task_center": 0.595,
+    "dev_ece": 0.15921275988221167,
+    "dev_accuracy_by_center": {
+      "options": 0.5361,
+      "generic": 0.55,
+      "none": 0.5506
+    },
+    "dev_accuracy_by_set": {
+      "yahootopics": 0.42,
+      "empathetic": 0.42,
+      "massive": 0.6,
+      "financialphrasebank": 0.72
+    },
+    "n_dev": 200,
+    "backend": "torch",
+    "repo": "openbmb/MiniCPM5-2B",
+    "n_layers": 42,
+    "candidate_layers": [
+      20,
+      41
+    ],
+    "n_generic": 195,
+    "latency_ms_p50": 154.81362499849638,
+    "warnings": [],
+    "date": "2026-09-22",
+    "seconds": 141
+  }
+}

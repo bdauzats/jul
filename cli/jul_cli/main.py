@@ -185,22 +185,50 @@ def cmd_autotune(a):
 
 
 def cmd_models(a):
+    if a.action == "add":
+        return cmd_models_add(a)
+    from jul.presets import fitted_presets
     try:
         from huggingface_hub import scan_cache_dir
         cached = {r.repo_id for r in scan_cache_dir().repos}
     except Exception:
         cached = set()
-    print(f"{'preset':<14} {'downloaded':<11} {'latency':<10} quality")
-    for name, p in PRESETS.items():
-        mark = "yes" if set(p.repos.values()) & cached else "no"
-        print(f"{name:<14} {mark:<11} {p.latency_ms + ' ms':<10} {p.quality}")
+    rows = [(name, "mlx", p) for name, p in PRESETS.items()]
+    rows += [(p.name, p.backend, p) for p in fitted_presets()]
+    print(f"{'preset':<14} {'backend':<8} {'downloaded':<11} {'latency':<10} quality")
+    for name, backend, p in rows:
+        repo = p.repos.get(backend)
+        mark = "yes" if repo in cached else "no"
+        print(f"{name:<14} {backend:<8} {mark:<11} {p.latency_ms + ' ms':<10} {p.quality}")
     print(f"\naliases: " + ", ".join(f"{a} -> {t}" for a, t in ALIASES.items()))
-    for name, p in PRESETS.items():
-        print(f"\n{name}: " + ", ".join(f"{b} {r}" for b, r in p.repos.items()))
+    for name, backend, p in rows:
+        print(f"\n{name} ({backend}): " + ", ".join(f"{b} {r}" for b, r in p.repos.items()))
         print(f"  formulations: " + ", ".join(f"{f.name}@layer{f.layer}" for f in p.formulations)
               + f", tau={p.tau}, center={p.center}")
         if p.notes:
             print(f"  note: {p.notes}")
+    print("\nAdd a model: jul models add <name> --repo <hf repo> [--backend mlx|torch]")
+
+
+def cmd_models_add(a):
+    from jul.calibrate import CalibrationError, calibrate
+    if not a.name:
+        raise SystemExit("models add needs a name")
+    try:
+        preset = calibrate(a.name, repo=a.repo, backend=a.backend, data=a.data,
+                           n_dev=a.n_dev, n_generic=a.n_generic)
+    except CalibrationError as exc:
+        raise SystemExit(f"error: {exc}")
+    c = preset.calibration
+    print(f"\n{preset.name} on {c['backend']}: layers "
+          + ", ".join(f"{f.name}@{f.layer}" for f in preset.formulations)
+          + f", center {preset.center}, tau {preset.tau}")
+    print(f"  dev accuracy {c['dev_accuracy']:.3f} ± {c['dev_accuracy_stderr']:.3f} (n={c['n_dev']}), "
+          f"{c['dev_accuracy_task_center']:.3f} with a task center; ECE {c['dev_ece']:.3f}; "
+          f"{c['latency_ms_p50']:.0f} ms per decision")
+    print("  by set: " + ", ".join(f"{k} {v:.2f}" for k, v in c["dev_accuracy_by_set"].items()))
+    print("  by center: " + ", ".join(f"{k} {v:.3f}" for k, v in c["dev_accuracy_by_center"].items()))
+    print(f"\nUse it: jul ask ... --model {preset.name} --backend {c['backend']}")
 
 
 def cmd_lab(a):
@@ -262,7 +290,15 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--backend", **backend_kw)
     s.set_defaults(fn=cmd_autotune)
 
-    s = sub.add_parser("models", help="available presets, whether downloaded, indicative latency")
+    s = sub.add_parser("models", help="list the presets, or fit one for a new model (add)")
+    s.add_argument("action", nargs="?", choices=["list", "add"], default="list")
+    s.add_argument("name", nargs="?", help="add: the preset name")
+    s.add_argument("--repo", help="add: Hugging Face repo (default: the known repo for this name)")
+    s.add_argument("--backend", **backend_kw)
+    s.add_argument("--data", type=Path, help="add: calibration data dir (default: fetched into "
+                                               "~/.jul/calibration-data)")
+    s.add_argument("--n-dev", type=int, default=50, help="add: examples per dev set (default 50)")
+    s.add_argument("--n-generic", type=int, default=200, help="add: generic texts (default 200)")
     s.set_defaults(fn=cmd_models)
 
     s = sub.add_parser("lab", help="research commands")

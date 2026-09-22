@@ -58,6 +58,30 @@ huggingface-cli download mlx-community/Qwen3.5-9B-4bit
 
 `jul models` shows which ones are already downloaded.
 
+### Adding a model
+
+```bash
+jul models add my-model --repo org/Some-Instruct-3B            # on the default backend
+jul models add minicpm5-2b --backend torch                     # a known preset, on another backend
+```
+
+One command runs the protocol that produced the built-in presets, on the dev datasets only (never on
+the Jev benchmark):
+
+1. **checks** — the model loads, the prefix cache leaves the vectors unchanged, a call does not
+   disturb the next one, the letters reading (Noul, Score) has single-token markers;
+2. **extraction** — 4 dev sets x 50 examples and 200 generic texts, every layer of the upper half
+   read in the same pass;
+3. **choice** — layers and center by dev accuracy averaged over neighbouring layers (a plateau, not a
+   lucky peak), then tau by pooled NLL;
+4. **output** — `~/.jul/presets/<name>@<backend>.json` and its generic center, used from then on by
+   `--model <name>` on that backend. `jul models` lists it with what was measured.
+
+The calibration data is downloaded once from BTZSC into `~/.jul/calibration-data` (needs
+`pip install -e ".[calibrate]"`), or taken from `--data <dir>`. The dev accuracy it reports comes
+with its standard error (±3.5 points at n=200): it orients, it does not rank close models. Measure
+on the Jev bench separately, once.
+
 ## Use it as a drop-in for Jev
 
 Change the import; nothing else.
@@ -369,6 +393,7 @@ jul/
     client.py       TypeSafeClient / AsyncTypeSafeClient
     context.py      Context: description, examples, labeled; disk cache
     tuning.py       `autotune(...)`: per-task head, cross-validated, with a safety net
+    calibrate.py    `jul models add`: checks, extraction, choice of layers / center / tau
     backbone.py     the backend interface: tap layers, stop early, cached prefix; picks the backend
     backends/       mlx.py (mlx-lm) and torch.py (transformers)
     calibration.py  temperature and per-option bias

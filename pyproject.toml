@@ -23,6 +23,8 @@ mlx = ["mlx>=0.32; sys_platform == 'darwin' and platform_machine == 'arm64'",
        "mlx-lm>=0.31; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 torch = ["torch>=2.4", "transformers>=5.0", "accelerate"]
 yaml = ["pyyaml>=6"]
+# `jul models add` downloads its calibration data with `datasets`.
+calibrate = ["datasets", "pyarrow"]
 # The lab trains its heads with MLX.
 lab = ["jul[mlx]", "pyyaml>=6", "datasets", "pyarrow"]
 # Everything needed to re-run the measurements in README > Reproducing.
@@ -37,7 +39,7 @@ package-dir = {"jul" = "lib/jul", "jul.backends" = "lib/jul/backends", "jul.lab"
 packages = ["jul", "jul.backends", "jul.lab", "jul_cli"]
 
 [tool.setuptools.package-data]
-jul = ["assets/*.npy"]
+jul = ["assets/*.npy", "assets/presets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

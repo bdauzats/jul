@@ -3,7 +3,9 @@
 softmax(cosine / tau) must be calibrated per backbone; tau is chosen by pooled NLL over the dev sets,
 for "one word" and for "one word + question/options". Writes runs/dev/tau-<model>.json.
 
-Usage: scripts/dev_fit_tau.py <model> <layer_one_word> <layer_combo> [N]"""
+Usage: [JUL_BACKEND=torch] scripts/dev_fit_tau.py <model> <layer_one_word> <layer_combo> [N]
+
+On a backend other than MLX, writes runs/dev/tau-<model>@<backend>.json."""
 
 import json
 import sys
@@ -79,6 +81,6 @@ for name, data in pooled.items():
             m = metrics(np.stack([s / tau_used for s, _ in ds_rows]), np.array([t for _, t in ds_rows]))
             eces.append(m["ece"])
         print(f"  {name:<30} {label:<22} mean dev ECE {np.mean(eces):.3f}")
-out = ROOT / "runs" / "dev" / f"tau-{MODEL}.json"
-out.write_text(json.dumps({"model": MODEL, "layer_one_word": L_ONE, "layer_combo": L_COMBO, "n_per_dataset": N, "tau": taus}, indent=2))
+out = ROOT / "runs" / "dev" / f"tau-{bb.key}.json"
+out.write_text(json.dumps({"model": MODEL, "backend": bb.backend, "layer_one_word": L_ONE, "layer_combo": L_COMBO, "n_per_dataset": N, "tau": taus}, indent=2))
 print("saved", out, taus)

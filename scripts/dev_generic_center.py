@@ -14,8 +14,9 @@ recomputed for every new question -- which is only worth it if it clearly wins h
 State and option vectors do not depend on the center, so they are computed once and every strategy is
 scored offline from them.
 
-Usage: scripts/dev_generic_center.py <model> [n_dev] [n_generic]
-Writes jul/lib/jul/assets/<model>.one_word.center.npy and runs/dev/center-<model>.json
+Usage: [JUL_BACKEND=torch] scripts/dev_generic_center.py <model> [n_dev] [n_generic]
+Writes jul/lib/jul/assets/<model>[.<backend>].one_word.center.npy and runs/dev/center-<model>[@<backend>].json
+(the backend is only named when it is not MLX)
 """
 
 import json
@@ -43,7 +44,7 @@ QUESTION = "Which single label best describes the input text?"
 
 nrm = lambda a: a / np.linalg.norm(a, axis=-1, keepdims=True)
 preset = resolve(MODEL)
-MODELS[preset.name] = preset.repo
+MODELS[preset.name] = preset.repos
 bb = Backbone(preset.name)
 ONE_WORD, QUESTION_OPTIONS = preset.formulations
 
@@ -70,7 +71,7 @@ def question_prompt(labels: list[str]) -> str:
 files = sorted((ROOT / "data" / "generic").glob("*.jsonl"))
 per_file = max(1, N_GENERIC // len(files))
 generic = [json.loads(l)["text"] for f in files for l in list(open(f))[:per_file]][:N_GENERIC]
-print(f"{preset.name}: {len(generic)} generic texts from {len(files)} datasets, "
+print(f"{preset.name} ({bb.backend}): {len(generic)} generic texts from {len(files)} datasets, "
       f"{N_DEV} rows per dev dataset", flush=True)
 
 t0 = time.perf_counter()
@@ -123,11 +124,12 @@ for name, per_ds in ranked:
     mean = np.mean([per_ds[d] for d in DEV])
     print(f"{name:<18} " + "  ".join(f"{per_ds[d]:8.3f}" for d in DEV) + f"   {mean:.3f}")
 
-asset = ROOT / "lib" / "jul" / "assets" / f"{preset.name}.one_word.center.npy"
+tag = "" if bb.backend == "mlx" else f".{bb.backend}"
+asset = ROOT / "lib" / "jul" / "assets" / f"{preset.name}{tag}.one_word.center.npy"
 np.save(asset, generic_center_ow.astype(np.float32))
-out = ROOT / "runs" / "dev" / f"center-{preset.name}.json"
+out = ROOT / "runs" / "dev" / f"center-{bb.key}.json"
 out.parent.mkdir(parents=True, exist_ok=True)
-out.write_text(json.dumps({"model": preset.name, "n_dev": N_DEV, "n_generic": len(generic),
+out.write_text(json.dumps({"model": preset.name, "backend": bb.backend, "n_dev": N_DEV, "n_generic": len(generic),
                            "layers": {"one_word": ONE_WORD.layer, "question_options": QUESTION_OPTIONS.layer},
                            "accuracy": results}, indent=2))
 print(f"\nsaved {asset.relative_to(ROOT)} and {out.relative_to(ROOT)}")

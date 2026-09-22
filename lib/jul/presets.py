@@ -3,17 +3,23 @@
 Every number here was fitted on the dev datasets (yahootopics, empathetic, massive,
 financialphrasebank) with `scripts/dev_fit_tau.py`, never on the Jev benchmark. See docs/JOURNAL.md
 for the measurements behind each value.
+
+The presets below were fitted on MLX. `jul models add <name> --backend <b>` (jul/calibrate.py) fits a
+preset for any model on any backend and saves it as `<name>@<backend>.json` in ~/.jul/presets; such a
+file takes precedence over the built-in preset on that backend.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 
 ASSETS = Path(__file__).resolve().parent / "assets"
+PRESET_HOME = Path.home() / ".jul" / "presets"
 
 ONE_WORD = 'This text: "{state}" means in one word: "'
 QUESTION_OPTIONS = '{instructions}\nPossible answers: {options}.\nText: "{state}"\nIn one word, the answer is: "'
@@ -31,7 +37,7 @@ class Formulation:
 @dataclass(frozen=True)
 class Preset:
     name: str
-    repo: str                      # MLX repo
+    repo: str                      # MLX repo ("" when the preset has none)
     formulations: tuple[Formulation, ...]
     tau: float
     latency_ms: str
@@ -41,6 +47,14 @@ class Preset:
     center: str = "options"
     notes: str = ""
     torch_repo: str | None = None  # transformers repo; None: no torch backend for this preset
+    #: (layer, tau) of the single-formulation "one word" variant; None: see ONE_WORD_ONLY.
+    one_word: tuple[int, float] | None = None
+    #: The backend the numbers were fitted on; None for the built-in presets (MLX).
+    backend: str | None = None
+    #: Where the generic centers live.
+    asset_dir: Path = field(default=ASSETS, compare=False)
+    #: What `jul models add` measured, for `jul models` to show. Not used at inference.
+    calibration: dict | None = field(default=None, compare=False, hash=False)
 
     @property
     def layers(self) -> list[int]:
@@ -48,15 +62,66 @@ class Preset:
 
     @property
     def repos(self) -> dict[str, str]:
-        return {"mlx": self.repo, **({"torch": self.torch_repo} if self.torch_repo else {})}
+        return {**({"mlx": self.repo} if self.repo else {}),
+                **({"torch": self.torch_repo} if self.torch_repo else {})}
 
     def generic_center(self, formulation: Formulation, backend: str = "mlx") -> np.ndarray | None:
         """The asset fitted with this backend's weights, else the MLX one."""
-        names = ([f"{self.name}.{backend}.{formulation.name}.center.npy"] if backend != "mlx" else [])
-        for path in [ASSETS / n for n in names + [f"{self.name}.{formulation.name}.center.npy"]]:
+        names = [center_asset_name(self.name, backend, formulation.name)]
+        if backend != "mlx":
+            names.append(center_asset_name(self.name, "mlx", formulation.name))
+        for path in [self.asset_dir / n for n in names]:
             if path.exists():
                 return np.load(path)
         return None
+
+    # --- JSON, for the presets written by `jul models add` ------------------------------------
+
+    def to_json(self) -> dict:
+        return {"name": self.name, "repos": self.repos, "backend": self.backend,
+                "formulations": [dataclasses.asdict(f) for f in self.formulations],
+                "tau": self.tau, "center": self.center,
+                "one_word": list(self.one_word) if self.one_word else None,
+                "latency_ms": self.latency_ms, "quality": self.quality, "notes": self.notes,
+                "calibration": self.calibration}
+
+    @classmethod
+    def from_json(cls, d: dict, asset_dir: Path) -> "Preset":
+        repos = d["repos"]
+        return cls(name=d["name"], repo=repos.get("mlx", ""), torch_repo=repos.get("torch"),
+                   formulations=tuple(Formulation(**f) for f in d["formulations"]),
+                   tau=d["tau"], center=d["center"],
+                   one_word=tuple(d["one_word"]) if d.get("one_word") else None,
+                   latency_ms=d.get("latency_ms", "?"), quality=d.get("quality", ""),
+                   notes=d.get("notes", ""), backend=d.get("backend"), asset_dir=asset_dir,
+                   calibration=d.get("calibration"))
+
+
+def center_asset_name(name: str, backend: str, formulation: str) -> str:
+    """MLX keeps the untagged name the built-in assets always had."""
+    tag = "" if backend == "mlx" else f".{backend}"
+    return f"{name}{tag}.{formulation}.center.npy"
+
+
+def preset_path(name: str, backend: str, home: Path | None = None) -> Path:
+    return (home or PRESET_HOME) / f"{name}@{backend}.json"
+
+
+def load_preset(path: Path) -> Preset:
+    return Preset.from_json(json.loads(path.read_text()), path.parent)
+
+
+def save_preset(preset: Preset, home: Path | None = None) -> Path:
+    path = preset_path(preset.name, preset.backend, home)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(preset.to_json(), indent=2, ensure_ascii=False) + "\n")
+    return path
+
+
+def fitted_presets(home: Path | None = None) -> list[Preset]:
+    """The presets written by `jul models add`, then the ones shipped with the package."""
+    dirs = [home or PRESET_HOME, ASSETS / "presets"]
+    return [load_preset(p) for d in dirs if d.exists() for p in sorted(d.glob("*@*.json"))]
 
 
 PRESETS: dict[str, Preset] = {
@@ -103,17 +168,32 @@ ALIASES = {"fast": "minicpm5-2b", "accurate": "qwen3.5-9b"}
 DEFAULT_MODEL = "minicpm5-2b"
 
 
-def resolve(name: str | None) -> Preset:
+def resolve(name: str | None, backend: str | None = None, home: Path | None = None) -> Preset:
+    """A preset fitted on `backend` (~/.jul/presets, then the package), else the built-in one."""
     name = name or DEFAULT_MODEL
     key = ALIASES.get(name, name)
-    if key not in PRESETS:
-        raise ValueError(f"Unknown model {name!r}. Available: {', '.join(PRESETS)} "
-                         f"(aliases: {', '.join(ALIASES)})")
-    return PRESETS[key]
+    if backend:
+        for path in (preset_path(key, backend, home), preset_path(key, backend, ASSETS / "presets")):
+            if path.exists():
+                return load_preset(path)
+    if key in PRESETS:
+        return PRESETS[key]
+    fitted = [p for p in fitted_presets(home) if p.name == key]
+    if fitted:
+        if backend is None:
+            return fitted[0]
+        raise ValueError(f"{name!r} was fitted for {', '.join(p.backend for p in fitted)} only. "
+                         f"Fit it for {backend} with: jul models add {key} --backend {backend}")
+    names = sorted(set(PRESETS) | {p.name for p in fitted_presets(home)})
+    raise ValueError(f"Unknown model {name!r}. Available: {', '.join(names)} "
+                     f"(aliases: {', '.join(ALIASES)}). Add one with: jul models add <name> --repo <repo>")
 
 
-def one_word_preset(name: str | None = None) -> Preset:
+def one_word_preset(name: str | None = None, backend: str | None = None, home: Path | None = None) -> Preset:
     """The cheaper single-pass variant of a preset: one formulation, its own temperature."""
-    p = resolve(name)
-    layer, tau = ONE_WORD_ONLY[p.name]
+    p = resolve(name, backend, home)
+    one_word = p.one_word or ONE_WORD_ONLY.get(p.name)
+    if one_word is None:
+        raise ValueError(f"{p.name!r} has no fitted one-word variant")
+    layer, tau = one_word
     return dataclasses.replace(p, formulations=(Formulation("one_word", ONE_WORD, layer),), tau=tau)
