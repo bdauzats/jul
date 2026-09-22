@@ -310,6 +310,21 @@ from fewer examples.
 A head only knows the options it saw, and only the preset whose vectors it saw: change either and you
 call `autotune(...)` again.
 
+### Not enough labeled examples? `jul synth`
+
+Writes a synthetic labeled dataset from a few real examples, in the format `autotune` reads. It only
+writes the data: tuning stays a separate step.
+
+```bash
+jul synth questions.yaml --seeds sample.jsonl --per-option 30 --output synth.jsonl   # writer: qwen3.5-9b
+jul autotune tickets --questions questions.yaml --labeled synth.jsonl
+```
+
+The writer first describes the source from the seeds (who writes, form, tone), then writes texts option
+by option, shown the whole option list and the seeds carrying that option. Seeds are `{state, answers}`
+lines; `answers` may be left out, the text then only informs the style. Synthetic texts are cleaner
+than real ones: keep real labeled examples aside to check what a head trained on them is worth.
+
 ## Command line
 
 ```bash
@@ -320,6 +335,7 @@ jul ask choice "Which team should handle this ticket?" \
 jul run questions.yaml --input tickets.jsonl --output answers.jsonl --context tickets
 jul context create tickets --description "Support tickets of an online bank" --examples sample.txt
 jul context list | show tickets | delete tickets
+jul synth questions.yaml --seeds sample.jsonl --per-option 30 --output synth.jsonl
 jul autotune tickets --questions questions.yaml --labeled labeled.jsonl
 jul models
 jul lab ...        # the research commands of the prototype
@@ -423,6 +439,7 @@ jul/
     engine.py       the vector method: formulations, cached prefixes, combination
     client.py       TypeSafeClient / AsyncTypeSafeClient
     context.py      Context: description, examples, labeled; disk cache
+    synth.py        `jul synth`: synthetic labeled data for autotune
     tuning.py       `autotune(...)`: per-task head, cross-validated, with a safety net
     calibrate.py    `jul models add`: checks, extraction, choice of layers / center / tau
     backbone.py     the backend interface: tap layers, stop early, cached prefix; picks the backend

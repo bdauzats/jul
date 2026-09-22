@@ -7,6 +7,7 @@
 
   jul run questions.yaml --input tickets.jsonl --output answers.jsonl --context tickets
   jul context create tickets --description "Support tickets of an online bank" --examples sample.txt
+  jul synth questions.yaml --seeds sample.jsonl --per-option 30 --output synth.jsonl
   jul autotune tickets --questions questions.yaml --labeled labeled.jsonl
   jul models
 
@@ -163,15 +164,23 @@ def cmd_context(a):
         print(f"deleted {a.name!r}" if Context.delete(a.name) else f"no context named {a.name!r}")
 
 
-def cmd_autotune(a):
-    questions = load_questions(a.questions)
+def read_labeled(path: str | Path, questions: dict, require_answers: bool = True) -> list[tuple]:
+    """`(state, answers)` pairs from JSONL lines `{state|text, answers: {question: answer}}`."""
     labeled = []
-    for row in read_jsonl(a.labeled):
+    for row in read_jsonl(path):
+        if isinstance(row, str):
+            row = {"state": row}
         state = row.get("state", row.get("text"))
         answers = row.get("answers") or {k: v for k, v in row.items() if k in questions}
-        if state is None or not answers:
+        if state is None or (require_answers and not answers):
             raise SystemExit("each labeled line needs a `state` (or `text`) and one answer per question")
         labeled.append((state, answers))
+    return labeled
+
+
+def cmd_autotune(a):
+    questions = load_questions(a.questions)
+    labeled = read_labeled(a.labeled, questions)
     try:
         ctx = Context.load(a.context)
     except FileNotFoundError:
@@ -183,6 +192,26 @@ def cmd_autotune(a):
         print(report)
         print()
     client.close()
+
+
+def cmd_synth(a):
+    from jul.synth import mlx_writer, synthesize
+    questions = load_questions(a.questions)
+    seeds = read_labeled(a.seeds, questions, require_answers=False) if a.seeds else []
+    if not seeds:
+        print("no seeds: texts are written from the questions alone", file=sys.stderr)
+    print(f"loading writer {a.writer} ...", file=sys.stderr)
+    write = mlx_writer(a.writer, temperature=a.temperature)
+    t0 = time.perf_counter()
+    with open(a.output, "w") as out:
+        def save(rows):
+            for r in rows:
+                out.write(json.dumps(r, ensure_ascii=False) + "\n")
+            out.flush()
+            if rows:
+                print(f"  {next(iter(rows[0]['answers'].items()))}: {len(rows)} texts", file=sys.stderr)
+        rows = synthesize(questions, seeds, a.per_option, write, batch=a.batch, seed=a.seed, on_option=save)
+    print(f"{len(rows)} texts in {time.perf_counter() - t0:.0f}s -> {a.output}", file=sys.stderr)
 
 
 def cmd_models(a):
@@ -302,6 +331,17 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--model", **model_kw)
     s.add_argument("--backend", **backend_kw)
     s.set_defaults(fn=cmd_autotune)
+
+    s = sub.add_parser("synth", help="write a synthetic labeled dataset (for a later autotune)")
+    s.add_argument("questions")
+    s.add_argument("--seeds", help="JSONL of real examples: {state|text, answers?}; answers optional")
+    s.add_argument("--output", required=True, help="JSONL in the format of autotune --labeled")
+    s.add_argument("--per-option", type=int, default=30, help="texts per option (default 30)")
+    s.add_argument("--writer", default="qwen3.5-9b", help="preset or mlx-lm repo (default qwen3.5-9b)")
+    s.add_argument("--batch", type=int, default=8, help="texts asked per call (default 8)")
+    s.add_argument("--temperature", type=float, default=0.9)
+    s.add_argument("--seed", type=int, default=0)
+    s.set_defaults(fn=cmd_synth)
 
     s = sub.add_parser("models", help="list the presets, or fit one for a new model (add)")
     s.add_argument("action", nargs="?", choices=["list", "add"], default="list")
