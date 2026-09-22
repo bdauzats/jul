@@ -56,5 +56,7 @@ for dataset, classes in by_class.items():
                 f.write(json.dumps({"text": text, "label": labels[y]}, ensure_ascii=False) + "\n")
     task = {"name": f"btzsc-{dataset}", "data_dir": f"data/btzsc-{dataset}", "instruction": question,
             "labels": [{"name": l} for l in labels]}
-    (ROOT / "tasks" / f"btzsc-{dataset}.json").write_text(json.dumps(task, indent=2, ensure_ascii=False))
+    task_path = ROOT / "tasks" / f"btzsc-{dataset}.json"
+    task_path.parent.mkdir(parents=True, exist_ok=True)   # a fresh clone has no tasks/ directory
+    task_path.write_text(json.dumps(task, indent=2, ensure_ascii=False))
     print(f"{dataset}: train {len(train)}  val {len(val)}  test {len(test)}  labels {len(labels)}")

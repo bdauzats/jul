@@ -1,7 +1,6 @@
 """The per-task head, its safety net and the example-count tiers."""
 
 import numpy as np
-import pytest
 
 from jul import tuning
 

@@ -1,0 +1,146 @@
+name: Numbers
+
+# Re-measures the claim that costs nothing to re-measure, and posts it on the PR.
+#
+# Only the TF-IDF baseline runs here. That is deliberate: it is the row the README uses to argue the
+# whole project's value ("it beats the zero-shot LLM outright"), it needs no GPU, and it finishes in
+# minutes. The LLM rows need Apple Silicon or a GPU and stay a manual, once-per-release measurement.
+#
+# What this proves: the manifest is the published one (SHA-256), the training rows never touch the
+# benchmark rows, and the accuracies are reproducible on a machine nobody owns.
+#
+# What it does NOT prove: latency. The README's "0.17 ms / 1400x" was measured on the author's Mac;
+# a shared runner reports 3-4x that. The job prints both so the gap is visible rather than implied.
+
+on:
+  pull_request:
+    paths:
+      - "lib/**"
+      - "scripts/bench_tfidf.py"
+      - "scripts/prepare_btzsc.py"
+      - ".github/workflows/numbers.yml"
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"   # Monday, to catch a dataset or dependency drifting under us
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  PYTHONUNBUFFERED: "1"
+  HF_HUB_DISABLE_PROGRESS_BARS: "1"
+
+jobs:
+  tfidf-baseline:
+    name: the no-LLM baseline, re-measured
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install
+        run: |
+          pip install -e ".[dev,yaml]"
+          pip install scikit-learn datasets pyarrow
+          git clone --depth 1 https://github.com/AbdelStark/jev-benchmarks external/jev-benchmarks
+          pip install -e "external/jev-benchmarks[data]"
+
+      - name: Cache the BTZSC dataset
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/huggingface/datasets
+          key: btzsc-fef2a2ac-v1
+
+      - name: Build the splits (verifies the manifest and the train/test disjunction)
+        run: python scripts/prepare_btzsc.py
+
+      - name: Re-measure the baseline
+        run: python scripts/bench_tfidf.py | tee baseline-run.txt
+
+      - name: Compare with what the README claims
+        run: |
+          python - <<'PY'
+          import json, re, pathlib, sys
+
+          # The accuracies the README publishes for TF-IDF + linear SVM.
+          CLAIMED = {"agnews": 0.88, "banking77": 0.76, "emotiondair": 0.43, "mean": 0.690}
+          TOLERANCE = 0.01          # the pipeline is deterministic: this is a hard check
+
+          report = pathlib.Path("runs/jev-bench-jul/report-tfidf.md").read_text()
+          row = next(l for l in report.splitlines() if l.startswith("| TF-IDF + linear SVM"))
+          cells = [c.strip().strip("*") for c in row.split("|")[2:]]
+          got = {"agnews": float(cells[0]), "banking77": float(cells[1]),
+                 "emotiondair": float(cells[2]), "mean": float(cells[3])}
+
+          print(f"{'dataset':<14} {'claimed':>8} {'measured':>9} {'delta':>7}")
+          bad = []
+          for key, claimed in CLAIMED.items():
+              delta = got[key] - claimed
+              flag = "" if abs(delta) <= TOLERANCE else "  <-- DRIFT"
+              print(f"{key:<14} {claimed:>8.3f} {got[key]:>9.3f} {delta:>+7.3f}{flag}")
+              if abs(delta) > TOLERANCE:
+                  bad.append(f"{key}: README says {claimed:.3f}, measured {got[key]:.3f}")
+
+          latency = float(re.search(r"\*\*([\d.]+) ms\*\*", row).group(1))
+          print(f"\nlatency on this runner: {latency:.2f} ms/prediction")
+          print("the README quotes 0.17 ms, measured on Apple Silicon: latency is machine-dependent "
+                "and is NOT checked here")
+
+          pathlib.Path("numbers.json").write_text(json.dumps(
+              {"accuracy": got, "latency_ms": latency, "drift": bad}, indent=2))
+
+          if bad:
+              print("\nACCURACY DRIFT:\n  " + "\n  ".join(bad))
+              sys.exit(1)
+          print("\nevery published accuracy reproduced")
+          PY
+
+      - name: Publish the report on the PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('runs/jev-bench-jul/report-tfidf.md', 'utf8');
+            const numbers = JSON.parse(fs.readFileSync('numbers.json', 'utf8'));
+            const header = numbers.drift.length
+              ? '### :rotating_light: The published accuracies did not reproduce\n\n'
+                + numbers.drift.map(d => `- ${d}`).join('\n') + '\n\n'
+              : '### :white_check_mark: Every published accuracy reproduced on this runner\n\n';
+            const footer = `\n\n<sub>Latency here: **${numbers.latency_ms} ms** per prediction. `
+              + `The README quotes 0.17 ms (Apple Silicon) — latency is machine-dependent and not `
+              + `asserted by CI. Accuracies are.</sub>`;
+            const body = header + report + footer;
+            const marker = '<!-- jul-numbers -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+            const payload = marker + '\n' + body;
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body: payload,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: context.issue.number, body: payload,
+              });
+            }
+
+      - name: Keep the run as an artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tfidf-baseline
+          path: |
+            runs/jev-bench-jul/report-tfidf.md
+            baseline-run.txt
+            numbers.json

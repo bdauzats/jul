@@ -36,9 +36,9 @@ def load_questions(path: str | Path) -> dict:
     if path.suffix.lower() in {".yaml", ".yml"}:
         try:
             import yaml
-        except ImportError:
+        except ImportError as exc:
             raise SystemExit("PyYAML is needed for YAML question files: pip install 'jul[yaml]' "
-                             "(or use a .json file)")
+                             "(or use a .json file)") from exc
         raw = yaml.safe_load(text)
     else:
         raw = json.loads(text)
@@ -200,10 +200,10 @@ def cmd_models(a):
         repo = p.repos.get(backend)
         mark = "yes" if repo in cached else "no"
         print(f"{name:<14} {backend:<8} {mark:<11} {p.latency_ms + ' ms':<10} {p.quality}")
-    print(f"\naliases: " + ", ".join(f"{a} -> {t}" for a, t in ALIASES.items()))
+    print("\naliases: " + ", ".join(f"{a} -> {t}" for a, t in ALIASES.items()))
     for name, backend, p in rows:
         print(f"\n{name} ({backend}): " + ", ".join(f"{b} {r}" for b, r in p.repos.items()))
-        print(f"  formulations: " + ", ".join(f"{f.name}@layer{f.layer}" for f in p.formulations)
+        print("  formulations: " + ", ".join(f"{f.name}@layer{f.layer}" for f in p.formulations)
               + f", tau={p.tau}, center={p.center}")
         if p.notes:
             print(f"  note: {p.notes}")
@@ -218,7 +218,7 @@ def cmd_models_add(a):
         preset = calibrate(a.name, repo=a.repo, backend=a.backend, data=a.data,
                            n_dev=a.n_dev, n_generic=a.n_generic)
     except CalibrationError as exc:
-        raise SystemExit(f"error: {exc}")
+        raise SystemExit(f"error: {exc}") from exc
     c = preset.calibration
     print(f"\n{preset.name} on {c['backend']}: layers "
           + ", ".join(f"{f.name}@{f.layer}" for f in preset.formulations)

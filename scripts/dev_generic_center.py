@@ -24,7 +24,6 @@ import sys
 import time
 from pathlib import Path
 
-import mlx.core as mx
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -99,7 +98,8 @@ for ds in DEV:
     pack["ow"]["generic"] = generic_center_ow
     pack["qo"]["generic"] = vectors(qo_tpl, QUESTION_OPTIONS.layer, generic).mean(0)
 
-    def score(centers: dict) -> float:
+    # pack and y are bound as defaults: the closure must never see a later iteration's values.
+    def score(centers: dict, pack=pack, y=y) -> float:
         total = 0
         for key, c in centers.items():
             p = pack[key]
