@@ -113,6 +113,29 @@ The calibration data is downloaded once from BTZSC into `~/.jul/calibration-data
 with its standard error (±3.5 points at n=200): it orients, it does not rank close models. Measure
 on the Jev bench separately, once.
 
+### Decision models
+
+A *decision model* is a model trained to answer questions about a state, rather than to write text. It
+reads the state and the options through delimiter tokens it learned, and a small head scores each
+option against the question. `jul` runs one with no code of its own: everything that model needs sits
+next to its weights, in a `decision.json` (delimiters, layout, readout, head file, temperature, and the
+longest state and question it was trained on).
+
+```bash
+jul models add minicpm5-2b-decision --repo /path/to/minicpm5-2b-decision-mlx-4bit
+jul ask choice "Which team should handle this ticket?" -o billing -o shipping -o access \
+    --state "I was charged twice for order 4411" --model minicpm5-2b-decision
+```
+
+A directory holding a `decision.json` is registered as it is: there is nothing to fit, no layer to
+choose and no tau, so the command is instant. The API is the same as for any other model, and all three
+question types go through the same format. The state is encoded once per call and every question
+continues from it, so questions never see each other.
+
+Two differences with the presets above: `autotune(...)` does not apply (its heads are trained on the
+vectors of the other method, and such a model needs a full fine-tune instead), and a state longer than
+the limit in its `decision.json` is truncated rather than stretched.
+
 ## Use it as a drop-in for Jev
 
 Change the import; nothing else.
@@ -437,6 +460,7 @@ jul/
     types.py        questions and answers, same fields as the Jev SDK
     presets.py      the two presets: repo, layers, tau, centers
     engine.py       the vector method: formulations, cached prefixes, combination
+    decision.py     the pointer method: a decision model read with its own decision.json
     client.py       TypeSafeClient / AsyncTypeSafeClient
     context.py      Context: description, examples, labeled; disk cache
     synth.py        `jul synth`: synthetic labeled data for autotune
@@ -454,9 +478,9 @@ jul/
 ## Tests
 
 ```bash
-pytest tests                       # 66 tests, under a second, no model and no data
-JUL_SLOW=1 pytest tests            # all 88, downloads and loads both presets (~2 min)
-JUL_SLOW=1 pytest tests -m slow    # only the 22 that need a model
+pytest tests                       # 86 tests, under a second, no model and no data
+JUL_SLOW=1 pytest tests            # all 112, downloads and loads both presets (~2 min)
+JUL_SLOW=1 pytest tests -m slow    # only the 26 that need a model
 JUL_SLOW=1 pytest tests -m torch   # MLX against PyTorch on the same weights
 ```
 
