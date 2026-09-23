@@ -7,7 +7,7 @@ import os
 import numpy as np
 import pytest
 
-from jul.backbone import PromptTemplate, model_key, repo_for, resolve_backend
+from jul.backbone import Backbone, PromptTemplate, model_key, repo_for, resolve_backend
 from jul.context import Context
 from jul.presets import ONE_WORD, resolve
 
@@ -53,6 +53,64 @@ def test_a_backend_without_its_own_generic_center_falls_back_to_the_mlx_one():
     preset = resolve("qwen3.5-9b")
     f = preset.formulations[0]
     assert np.array_equal(preset.generic_center(f, "torch"), preset.generic_center(f))
+
+
+class _Counting(Backbone):
+    """A backbone without a model: the feature of a query is its token sum, and forwards are counted."""
+
+    backend = "fake"
+
+    def __new__(cls, *args, **kwargs):
+        return object.__new__(cls)
+
+    def __init__(self):
+        self.name, self.batches = "fake", []
+
+    def encode(self, text):
+        return [ord(c) for c in text]
+
+    def cache_prefix(self, tokens):
+        return tokens
+
+    def forward(self, tokens, layers=(), logits=False, pool=None, prefix=None):
+        return {l: np.array([float(sum(prefix or []) + sum(tokens)), 0.0]) for l in layers}, None
+
+    def forward_batch(self, queries, layers=(), pools=None, prefix=None):
+        self.batches.append(len(queries))
+        return super().forward_batch(queries, layers, pools, prefix)
+
+
+def test_run_batch_returns_the_features_of_run_in_the_order_of_the_texts(monkeypatch):
+    import jul.backbone as jb
+    monkeypatch.setattr(jb, "BATCH_SIZE", 3)
+    backbone = _Counting()
+    prefix, suffix = ONE_WORD.split("{state}")
+    template = PromptTemplate(backbone, prefix, suffix)
+    texts = TEXTS + ["a", "a much longer text than all the others, by far"]
+    batched = template.run_batch(texts, layers=[0])
+    assert [h[0][0] for h in batched] == [template.run(t, layers=[0])[0][0][0] for t in texts]
+    assert backbone.batches == [3, 3]
+
+
+def test_run_batch_keeps_a_group_under_the_token_budget(monkeypatch):
+    import jul.backbone as jb
+    monkeypatch.setattr(jb, "BATCH_TOKENS", 100)
+    backbone = _Counting()
+    template = PromptTemplate(backbone, "", "")
+    template.run_batch(["x" * 30] * 7, layers=[0])
+    assert backbone.batches == [3, 3, 1]
+
+
+@pytest.mark.skipif(not HAS_TORCH, reason="torch is not installed")
+def test_gpus_without_bfloat16_tensor_cores_default_to_float16():
+    import torch
+
+    from jul.backends.torch import default_dtype
+    assert default_dtype("cuda", (7, 5)) == torch.float16    # T4
+    assert default_dtype("cuda", (7, 0)) == torch.float16    # V100
+    assert default_dtype("cuda", (8, 0)) == torch.bfloat16   # A100
+    assert default_dtype("mps") == torch.bfloat16
+    assert default_dtype("cpu") == torch.float32
 
 
 # --- the torch backend on its own -----------------------------------------------------------------
@@ -114,6 +172,45 @@ def test_the_torch_prefix_cache_does_not_drift_over_many_calls(small_torch):
         template.run(TEXTS[i % len(TEXTS)] + " " + "x " * (i % 7), layers=[layer])
     last, _ = template.run(TEXTS[0], layers=[layer])
     assert np.allclose(first[layer], last[layer], atol=1e-3)
+
+
+@pytest.mark.slow
+@pytest.mark.torch
+@pytest.mark.skipif(not HAS_TORCH, reason="torch is not installed")
+@pytest.mark.parametrize("use_prefix_cache", [True, False])
+def test_a_torch_batch_reads_the_vectors_of_single_queries(small_torch, use_prefix_cache):
+    """Right padding without a mask: the causal mask alone keeps the padding out of the real tokens.
+    Both halves of the features (last token, and mean over the input) must match, at a middle layer
+    and at the last one, for texts of different lengths in the same batch."""
+    prefix, suffix = ONE_WORD.split("{state}")
+    template = PromptTemplate(small_torch, prefix, suffix, use_prefix_cache=use_prefix_cache)
+    layers = [small_torch.n_layers // 2, small_torch.n_layers - 1]
+    batched = template.run_batch(TEXTS, layers=layers)
+    for text, h in zip(TEXTS, batched):
+        single, _ = template.run(text, layers=layers)
+        for layer in layers:
+            assert cosine(h[layer], single[layer]) > 0.9999, (text, layer)
+    # the batch ran on a copy: the shared prefix is untouched
+    again, _ = template.run(TEXTS[0], layers=layers)
+    assert cosine(again[layers[1]], batched[0][layers[1]]) > 0.9999
+
+
+@pytest.mark.slow
+@pytest.mark.torch
+@pytest.mark.skipif(not HAS_TORCH, reason="torch is not installed")
+def test_a_shallow_read_leaves_the_deeper_layers_of_the_prefix_intact(small_torch):
+    """One template, read first at a shallow layer, then at the last one.
+
+    The shallow read stops early: the layers above it never see the query, so rewinding the cache
+    must not touch them. Reading at the last layer afterwards must match a fresh template.
+    """
+    prefix, suffix = ONE_WORD.split("{state}")
+    template = PromptTemplate(small_torch, prefix, suffix)
+    last = small_torch.n_layers - 1
+    template.run(TEXTS[0], layers=[small_torch.n_layers // 4])
+    h, _ = template.run(TEXTS[1], layers=[last])
+    fresh, _ = PromptTemplate(small_torch, prefix, suffix).run(TEXTS[1], layers=[last])
+    assert cosine(h[last], fresh[last]) > 0.9999
 
 
 @pytest.mark.slow

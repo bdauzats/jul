@@ -57,7 +57,8 @@ Yes: a model that writes essays, installing one that answers in a single word. N
 
 The backend defaults to MLX when it is installed on Apple Silicon, else PyTorch. Force it with
 `TypeSafeClient(backend="torch")`, `jul ask ... --backend torch`, or `JUL_BACKEND=torch`. The torch
-device defaults to cuda > mps > cpu (`JUL_DEVICE` overrides it), in bfloat16 (float32 on CPU).
+device defaults to cuda > mps > cpu (`JUL_DEVICE` overrides it), in bfloat16 — float32 on CPU, float16
+on GPUs older than Ampere such as the T4, which have no bfloat16 tensor cores (`JUL_DTYPE` overrides it).
 
 **The two backends do not run the same weights.** The MLX presets are 4-bit; PyTorch loads the
 original bf16 weights. On the same weights the two backends read the same vectors (cosine > 0.9999,

@@ -30,6 +30,10 @@ MODELS: dict[str, dict[str, str]] = {
     "qwen3.5-9b": {"mlx": "mlx-community/Qwen3.5-9B-4bit", "torch": "Qwen/Qwen3.5-9B"},
 }
 
+#: Size of a group in `PromptTemplate.run_batch`: rows x longest prompt (cached prefix included).
+BATCH_TOKENS = int(os.environ.get("JUL_BATCH_TOKENS", "16384"))
+BATCH_SIZE = int(os.environ.get("JUL_BATCH_SIZE", "64"))
+
 # Layers tapped during extraction, as fractions of the model depth.
 DEFAULT_LAYER_FRACTIONS = (0.25, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
 
@@ -108,6 +112,13 @@ class Backbone:
         """
         raise NotImplementedError
 
+    def forward_batch(self, queries: list[list[int]], layers=(), pools: list | None = None,
+                      prefix=None) -> list[dict[int, np.ndarray]]:
+        """The features of `forward` for each query, all after the same `prefix`. A backend may run
+        them in one forward; this default runs them one by one."""
+        pools = pools or [None] * len(queries)
+        return [self.forward(q, layers=layers, pool=p, prefix=prefix)[0] for q, p in zip(queries, pools)]
+
     def cache_prefix(self, tokens: list[int]):
         """Run `tokens` once and keep the model state after them, for `forward(prefix=...)`."""
         raise NotImplementedError
@@ -164,6 +175,35 @@ class PromptTemplate:
             p = len(self.prefix_tokens)
             return self.backbone.forward(self.prefix_tokens + query, layers=layers, logits=logits, pool=(p, p + n_input))
         return self.backbone.forward(query, layers=layers, logits=logits, pool=(0, n_input), prefix=self._prefix)
+
+    def run_batch(self, texts: list[str], layers=()) -> list[dict[int, np.ndarray]]:
+        """The features of `run` for each text. Texts are sorted by length and grouped so that a group
+        holds at most BATCH_TOKENS tokens (rows x longest prompt) and BATCH_SIZE rows."""
+        queries = [self.backbone.encode(t + self.suffix_text) for t in texts]
+        n_inputs = [max(1, len(q) - self._n_suffix) for q in queries]
+        p = len(self.prefix_tokens)
+        if self._prefix is None:
+            seqs, pools = [self.prefix_tokens + q for q in queries], [(p, p + n) for n in n_inputs]
+        else:
+            seqs, pools = queries, [(0, n) for n in n_inputs]
+        out: list = [None] * len(seqs)
+        group: list[int] = []
+
+        def flush():
+            got = self.backbone.forward_batch([seqs[i] for i in group], layers=layers,
+                                              pools=[pools[i] for i in group], prefix=self._prefix)
+            for i, features in zip(group, got):
+                out[i] = features
+
+        for i in sorted(range(len(seqs)), key=lambda i: len(seqs[i])):
+            longest = len(seqs[i]) + (p if self._prefix is not None else 0)
+            if group and ((len(group) + 1) * longest > BATCH_TOKENS or len(group) >= BATCH_SIZE):
+                flush()
+                group = []
+            group.append(i)
+        if group:
+            flush()
+        return out
 
 
 def timed(fn, *args, **kwargs):
