@@ -250,12 +250,41 @@ def cmd_models_add(a):
     from jul.decision import spec_source
     source = spec_source(a.repo) if a.repo else None
     if source:
+        import dataclasses
+
         from jul.backbone import resolve_backend
-        from jul.presets import pointer_preset, save_preset
-        preset = pointer_preset(a.name, source, resolve_backend(a.backend))
+        from jul.decision import DEFAULT_ROUTE_ABOVE, DecisionSpec
+        from jul.presets import pointer_preset, routing_from, save_preset
+        backend = resolve_backend(a.backend)
+        preset = pointer_preset(a.name, source, backend)
+        if a.no_routing:
+            path = save_preset(preset)
+            print(f"{a.name}: decision model on {backend}, read with its decision.json "
+                  f"(nothing fitted, --no-routing) -> {path}")
+            print(f"\nUse it: jul ask ... --model {a.name} --backend {backend}")
+            return
+        # The pointer head reads every option on every call, so a long question is cheaper read as
+        # vectors: fit that fallback on these very weights. `calibrate` saves a vector preset under the
+        # same name, so the pointer preset is written last and wins.
+        print(f"{a.name}: decision model; fitting the vector reading its long questions fall back to")
+        try:
+            fitted = calibrate(a.name, repo=source, backend=backend, data=a.data,
+                               n_dev=a.n_dev, n_generic=a.n_generic)
+        except CalibrationError as exc:
+            raise SystemExit(f"error: {exc} (pass --no-routing to add it without the fallback)") from exc
+        spec = DecisionSpec.load(preset.repos[backend]) if Path(preset.repos[backend]).is_dir() else None
+        above = a.route_above or (spec and spec.route_above) or DEFAULT_ROUTE_ABOVE
+        preset = dataclasses.replace(preset, routing=routing_from(fitted, above))
         path = save_preset(preset)
-        print(f"{a.name}: decision model on {preset.backend}, read with its decision.json (nothing to fit) -> {path}")
-        print(f"\nUse it: jul ask ... --model {a.name} --backend {preset.backend}")
+        c = fitted.calibration
+        print(f"\n{a.name}: decision model on {backend}, pointer head from its decision.json; above "
+              f"{above} options it reads as vectors: layers "
+              + ", ".join(f"{f.name}@{f.layer}" for f in fitted.formulations)
+              + f", center {fitted.center}, tau {fitted.tau}")
+        print(f"  the fallback alone scores {c['dev_accuracy']:.3f} ± {c['dev_accuracy_stderr']:.3f} "
+              f"on the dev sets (n={c['n_dev']}) -> {path}")
+        print(f"\nUse it: jul ask ... --model {a.name} --backend {backend}"
+              f"   (route_above=0 on a call reads everything with the pointer head)")
         return
     try:
         preset = calibrate(a.name, repo=a.repo, backend=a.backend, data=a.data,
@@ -366,6 +395,11 @@ def build_parser() -> argparse.ArgumentParser:
                                                "~/.jul/calibration-data)")
     s.add_argument("--n-dev", type=int, default=50, help="add: examples per dev set (default 50)")
     s.add_argument("--n-generic", type=int, default=200, help="add: generic texts (default 200)")
+    s.add_argument("--no-routing", action="store_true",
+                   help="add, decision model: skip fitting the vector reading long questions fall back to")
+    s.add_argument("--route-above", type=int,
+                   help="add, decision model: option count above which it falls back to vectors "
+                        "(default: its decision.json, else 32)")
     s.set_defaults(fn=cmd_models)
 
     s = sub.add_parser("lab", help="research commands")

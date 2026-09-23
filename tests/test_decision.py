@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 from jul.decision import DecisionSpec, PointerReader, render
+from jul.presets import Formulation, Preset
 from jul.types import Choice, Noul, NoulCriteria, Score, options_of
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -113,3 +114,29 @@ def test_a_decision_model_is_recognised_by_its_spec_file(tmp_path):
     assert spec_source(str(tmp_path)) is None
     (tmp_path / "decision.json").write_text("{}")
     assert spec_source(str(tmp_path)) == str(tmp_path.resolve())
+
+
+def test_the_routing_threshold_comes_from_the_spec_and_the_default_is_a_guess():
+    from jul.decision import DEFAULT_ROUTE_ABOVE
+    spec = DecisionSpec.load(FIXTURES, FIXTURES / "decision_minicpm5-2b.json")
+    assert spec.route_above is None                     # the fixture routes nowhere
+    assert DEFAULT_ROUTE_ABOVE == 32                    # read off four dev sets, not measured
+
+
+def test_a_fitted_fallback_survives_the_preset_round_trip(tmp_path):
+    """The fallback's numbers live in the preset, so `jul models add` can fit them for a Hub repo."""
+    from jul.decision import fallback_preset
+    from jul.presets import load_preset, routing_from, save_preset
+    fitted = Preset(name="m", repo="r", formulations=(Formulation("one_word", 'x "{state}" y', 29),),
+                    tau=0.048, center="generic", latency_ms="?", quality="", backend="mlx",
+                    calibration={"date": "2026-09-23", "dev_accuracy": 0.6})
+    preset = Preset(name="m", repo="r", formulations=(), tau=1.0, latency_ms="?", quality="",
+                    backend="mlx", method="pointer", routing=routing_from(fitted, 32))
+    reloaded = load_preset(save_preset(preset, tmp_path))
+    assert reloaded.method == "pointer" and reloaded.formulations == ()
+    assert reloaded.routing["above_options"] == 32 and reloaded.routing["center"] == "generic"
+
+    back = fallback_preset("m", "mlx", reloaded.routing, tmp_path)
+    assert back.method == "vector" and back.layers == [29] and back.tau == 0.048
+    # the name and directory are the ones the centers were fitted under, or "generic" finds no asset
+    assert back.name == "m" and back.asset_dir == tmp_path

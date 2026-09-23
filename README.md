@@ -230,21 +230,23 @@ weights: **868 ms → 77 ms at equal accuracy**.
 | `one_word` | preset | — | layer and tau of the single-formulation variant (`one_word_only=True`) |
 | `head.temperature` | `decision.json` | 1.954 for ours | divides the pointer logits; never changes an answer |
 | `limits.max_state_tokens` / `max_branch_tokens` | `decision.json` | 384 / 1024 | where a too-long state or question is cut |
-| `routing.above_options` | `decision.json` | 32 (MLX 4-bit only) | option count above which the vector reading answers |
+| `routing.above_options` | preset, else the model's `decision.json` | 32 | option count above which the vector reading answers |
+| `routing` formulations, `tau`, `center` | preset, fitted by `jul models add` | — | the fallback reading, fitted on these very weights |
 | `route_above=N` | per call | the model's value | overrides that threshold; `0` disables routing |
 | `method=` | per call or client | `"vector"` | `vector` or `letters`; ignored on a pointer preset |
 | `one_word_only=` | client | `False` | one formulation instead of two: faster, a little less accurate |
 | `backend=` | client, or `JUL_BACKEND` | auto | `mlx` or `torch` |
 | `JUL_BATCH_TOKENS` / `JUL_BATCH_SIZE` | environment | per backend | how many rows the backbone batches at once |
 
+`jul models add` sets this up: on a model whose repo holds a `decision.json` it writes the pointer preset
+**and** fits the fallback reading on those same weights, into the preset (`--no-routing` skips it,
+`--route-above N` sets the threshold). Fitting takes about five minutes. The threshold is a property of the
+trained model, so `decision.json` may carry it; the fitted numbers depend on the backend and the
+quantization, so they live in the preset like every other fitted number.
+
 The threshold of 32 is **not measured**: it is read off four development sets whose option counts differ
 along with their tasks, so option count is confounded with difficulty. Subsampling the options of one set
 would isolate it (JOURNAL §9 tervicies).
-
-And routing only works on a **local** weights directory today: the fallback's fitted numbers are read from
-`decision.json`, which cannot be written inside a Hub repo. They belong in the preset, next to every other
-fitted number, and `jul models add` should fit them — until it does, a model served from the Hub reads with
-the pointer head whatever its option count.
 
 ## Two presets, and a decision model
 

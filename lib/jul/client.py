@@ -25,6 +25,7 @@ from .calibration import fit_temperature_bias
 from .backbone import model_key, resolve_backend
 from .context import Context, question_digest, resolve_context
 from .engine import Engine, softmax
+from .decision import fallback_preset
 from .presets import Preset, one_word_preset, resolve
 from .types import (Choice, ChoiceAnswer, Noul, NoulAnswer, Option, Question, Score, ScoreAnswer,
                     SystemOneResponse, Usage, options_of, serialize_state)
@@ -122,8 +123,14 @@ class TypeSafeClient:
             # A decision model reads the raw state in its own format, once for all the questions. Beyond
             # `route_above` options the pointer head costs more latency than it earns (JOURNAL §9 tervicies),
             # so those questions go to the vector reading its decision.json describes.
-            above = engine.pointer.spec.route_above if route_above is None else route_above
-            routed = {n: q for n, q in questions.items() if above and len(options_of(q)) > above}
+            # The fallback's fitted numbers live in the preset, written by `jul models add` on these very
+            # weights; a model's own decision.json may carry them too (and the default threshold).
+            spec_routing = engine.pointer.spec.routing or {}
+            fitted = engine.preset.routing or spec_routing.get("vector")
+            above = (route_above if route_above is not None else
+                     (engine.preset.routing or {}).get("above_options") or engine.pointer.spec.route_above)
+            routed = ({n: q for n, q in questions.items() if len(options_of(q)) > above}
+                      if above and fitted else {})
             direct = {n: q for n, q in questions.items() if n not in routed}
             if direct:
                 items = [(_kind_of(q), q.instructions, options_of(q)) for q in direct.values()]
@@ -132,8 +139,9 @@ class TypeSafeClient:
                     answers[name] = _format(kind, question, options,
                                             self._calibrated(ctx, kind, question, options, z))
             if routed:
-                pointer_preset, engine.preset = engine.preset, engine.pointer.spec.vector_preset(
-                    f"{engine.preset.name}-vector", self.backend)
+                pointer_preset, engine.preset = engine.preset, fallback_preset(
+                    engine.preset.name, self.backend, fitted,
+                    engine.preset.asset_dir if engine.preset.routing else engine.pointer.spec.directory)
                 try:
                     for name, question in routed.items():
                         kind, options = _kind_of(question), options_of(question)

@@ -33,6 +33,9 @@ import numpy as np
 from .types import NOUL_DEFAULTS, Option
 
 SPEC_FILE = "decision.json"
+#: Option count above which a decision model reads as vectors when nothing else says. Read off four dev
+#: sets whose option counts vary along with their tasks, so it is a starting point, not a measurement.
+DEFAULT_ROUTE_ABOVE = 32
 
 
 def render(v: Any, indent: int = 0) -> str:
@@ -98,18 +101,20 @@ class DecisionSpec:
         """Option count above which the vector reading answers instead; None when the model routes nowhere."""
         return int(self.routing["above_options"]) if self.routing else None
 
-    def vector_preset(self, name: str, backend: str | None):
-        """The preset of the vector reading this model falls back to, built from its own decision.json.
 
-        Only the reading matters here: the backbone is already loaded, so the preset carries no repo. A
-        "generic" center needs its asset next to the weights, and degrades to the option mean without it.
-        """
-        from .presets import Formulation, Preset
-        v = self.routing["vector"]
-        return Preset(name=name, repo="", backend=backend, formulations=tuple(
-            Formulation(f["name"], f["template"], int(f["layer"])) for f in v["formulations"]),
-            tau=float(v["tau"]), center=v.get("center", "options"), asset_dir=self.directory,
-            latency_ms="?", quality="vector fallback of a decision model", method="vector")
+def fallback_preset(name: str, backend: str | None, fitted: dict, asset_dir: Path):
+    """The vector reading a decision model routes its long questions to.
+
+    Only the reading matters: the backbone is already loaded, so this preset carries no repo. `name` and
+    `asset_dir` must be the ones the centers were fitted under, or a "generic" center finds no asset and
+    degrades to the option mean.
+    """
+    from .presets import Formulation, Preset
+    return Preset(name=name, repo="", backend=backend, asset_dir=asset_dir,
+                  formulations=tuple(Formulation(f["name"], f["template"], int(f["layer"]))
+                                     for f in fitted["formulations"]),
+                  tau=float(fitted["tau"]), center=fitted.get("center", "options"),
+                  latency_ms="?", quality="vector fallback of a decision model", method="vector")
 
 
 def spec_source(repo: str) -> str | None:

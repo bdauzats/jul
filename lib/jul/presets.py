@@ -58,6 +58,9 @@ class Preset:
     #: "vector" (formulations, layers, tau) or "pointer": a decision model read with the format stored
     #: in its own decision.json (jul/decision.py); formulations and tau are then unused.
     method: str = "vector"
+    #: On a pointer preset: the vector reading a long question falls back to, fitted by `jul models add`
+    #: on these very weights (formulations, tau, center) plus `above_options`. None = no routing.
+    routing: dict | None = field(default=None, compare=False, hash=False)
 
     @property
     def layers(self) -> list[int]:
@@ -86,7 +89,7 @@ class Preset:
                 "tau": self.tau, "center": self.center,
                 "one_word": list(self.one_word) if self.one_word else None,
                 "latency_ms": self.latency_ms, "quality": self.quality, "notes": self.notes,
-                "calibration": self.calibration, "method": self.method}
+                "calibration": self.calibration, "method": self.method, "routing": self.routing}
 
     @classmethod
     def from_json(cls, d: dict, asset_dir: Path) -> "Preset":
@@ -97,7 +100,8 @@ class Preset:
                    one_word=tuple(d["one_word"]) if d.get("one_word") else None,
                    latency_ms=d.get("latency_ms", "?"), quality=d.get("quality", ""),
                    notes=d.get("notes", ""), backend=d.get("backend"), asset_dir=asset_dir,
-                   calibration=d.get("calibration"), method=d.get("method", "vector"))
+                   calibration=d.get("calibration"), method=d.get("method", "vector"),
+                   routing=d.get("routing"))
 
 
 def center_asset_name(name: str, backend: str, formulation: str) -> str:
@@ -130,6 +134,19 @@ def pointer_preset(name: str, repo: str, backend: str) -> Preset:
                   torch_repo=repo if backend == "torch" else None, formulations=(), tau=1.0,
                   latency_ms="?", quality="decision model (pointer method)", method="pointer",
                   notes=f"format and temperature ({spec.temperature:.3f}) read from {repo}/decision.json")
+
+
+def routing_from(fitted: Preset, above_options: int) -> dict:
+    """The `routing` block of a pointer preset, from a vector preset fitted on the same weights.
+
+    The names stay the same so the generic-center assets `jul models add` just wrote are the ones the
+    fallback reads (center_asset_name keys on the preset name).
+    """
+    return {"above_options": int(above_options),
+            "formulations": [dataclasses.asdict(f) for f in fitted.formulations],
+            "tau": fitted.tau, "center": fitted.center,
+            "fitted": (fitted.calibration or {}).get("date", ""),
+            "dev_accuracy": (fitted.calibration or {}).get("dev_accuracy")}
 
 
 def fitted_presets(home: Path | None = None) -> list[Preset]:
