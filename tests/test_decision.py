@@ -116,11 +116,10 @@ def test_a_decision_model_is_recognised_by_its_spec_file(tmp_path):
     assert spec_source(str(tmp_path)) == str(tmp_path.resolve())
 
 
-def test_the_routing_threshold_comes_from_the_spec_and_the_default_is_a_guess():
-    from jul.decision import DEFAULT_ROUTE_ABOVE
+def test_a_model_that_says_nothing_routes_nowhere():
+    """There is no guessed default: `jul models add` measures the threshold, or there is none."""
     spec = DecisionSpec.load(FIXTURES, FIXTURES / "decision_minicpm5-2b.json")
-    assert spec.route_above is None                     # the fixture routes nowhere
-    assert DEFAULT_ROUTE_ABOVE == 32                    # read off four dev sets, not measured
+    assert spec.routing is None and spec.route_above is None
 
 
 def test_a_fitted_fallback_survives_the_preset_round_trip(tmp_path):

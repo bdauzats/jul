@@ -230,7 +230,7 @@ weights: **868 ms → 77 ms at equal accuracy**.
 | `one_word` | preset | — | layer and tau of the single-formulation variant (`one_word_only=True`) |
 | `head.temperature` | `decision.json` | 1.954 for ours | divides the pointer logits; never changes an answer |
 | `limits.max_state_tokens` / `max_branch_tokens` | `decision.json` | 384 / 1024 | where a too-long state or question is cut |
-| `routing.above_options` | preset, else the model's `decision.json` | 32 | option count above which the vector reading answers |
+| `routing.above_options` | preset, measured by `jul models add` | measured | option count above which the vector reading answers |
 | `routing` formulations, `tau`, `center` | preset, fitted by `jul models add` | — | the fallback reading, fitted on these very weights |
 | `route_above=N` | per call | the model's value | overrides that threshold; `0` disables routing |
 | `method=` | per call or client | `"vector"` | `vector` or `letters`; ignored on a pointer preset |
@@ -238,15 +238,20 @@ weights: **868 ms → 77 ms at equal accuracy**.
 | `backend=` | client, or `JUL_BACKEND` | auto | `mlx` or `torch` |
 | `JUL_BATCH_TOKENS` / `JUL_BATCH_SIZE` | environment | per backend | how many rows the backbone batches at once |
 
-`jul models add` sets this up: on a model whose repo holds a `decision.json` it writes the pointer preset
-**and** fits the fallback reading on those same weights, into the preset (`--no-routing` skips it,
-`--route-above N` sets the threshold). Fitting takes about five minutes. The threshold is a property of the
-trained model, so `decision.json` may carry it; the fitted numbers depend on the backend and the
-quantization, so they live in the preset like every other fitted number.
+**Routing trades accuracy for speed, and the trade is not free.** Measured on massive by subsampling one
+set's own options — so the option count is not confounded with the task — the pointer head is better at
+*every* count, by about 5 points, while costing 105 ms at 3 options and 832 ms at 59. There is no count
+above which it stops earning its answer; there is only a count above which its speed stops being worth
+those points.
 
-The threshold of 32 is **not measured**: it is read off four development sets whose option counts differ
-along with their tasks, so option count is confounded with difficulty. Subsampling the options of one set
-would isolate it (JOURNAL §9 tervicies).
+So `jul models add` **measures** the threshold rather than guessing one: it takes the smallest option
+count at which the vector reading is three times faster, and records in the preset what that costs in
+accuracy. A model where that never happens gets no routing at all. `--route-above N` sets it by hand and
+`--no-routing` skips the whole fitting; the model's own `decision.json` may also carry a threshold.
+
+**For maximum accuracy, pass `route_above=0`** on the call: every question then goes to the pointer head,
+whatever its option count, and you pay the latency in the table above. The default is a compromise, and
+`jul models add` prints exactly what it costs on the dev set it measured.
 
 ## Two presets, and a decision model
 

@@ -33,9 +33,6 @@ import numpy as np
 from .types import NOUL_DEFAULTS, Option
 
 SPEC_FILE = "decision.json"
-#: Option count above which a decision model reads as vectors when nothing else says. Read off four dev
-#: sets whose option counts vary along with their tasks, so it is a starting point, not a measurement.
-DEFAULT_ROUTE_ABOVE = 32
 
 
 def render(v: Any, indent: int = 0) -> str:

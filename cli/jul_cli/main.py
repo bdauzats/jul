@@ -253,7 +253,8 @@ def cmd_models_add(a):
         import dataclasses
 
         from jul.backbone import resolve_backend
-        from jul.decision import DEFAULT_ROUTE_ABOVE, DecisionSpec
+        from jul.calibrate import (DATA_HOME, ROUTE_COUNTS, ROUTE_SPEEDUP, fit_route_above, load_data)
+        from jul.decision import DecisionSpec
         from jul.presets import pointer_preset, routing_from, save_preset
         backend = resolve_backend(a.backend)
         preset = pointer_preset(a.name, source, backend)
@@ -273,18 +274,35 @@ def cmd_models_add(a):
         except CalibrationError as exc:
             raise SystemExit(f"error: {exc} (pass --no-routing to add it without the fallback)") from exc
         spec = DecisionSpec.load(preset.repos[backend]) if Path(preset.repos[backend]).is_dir() else None
-        above = a.route_above or (spec and spec.route_above) or DEFAULT_ROUTE_ABOVE
-        preset = dataclasses.replace(preset, routing=routing_from(fitted, above))
+        above = a.route_above if a.route_above is not None else (spec and spec.route_above)
+        preset = dataclasses.replace(preset, routing=routing_from(fitted, above or 0))
         path = save_preset(preset)
-        c = fitted.calibration
+        c, route = fitted.calibration, None
+        if above is None:
+            # The pointer head is worth a few points at every option count, so the threshold is not where
+            # accuracy stops suffering: it is where the speed is worth them. Measured, never guessed.
+            print(f"{a.name}: measuring where reading as vectors becomes {ROUTE_SPEEDUP:.0f}x faster")
+            dev, _ = load_data(Path(a.data) if a.data else DATA_HOME, a.n_dev, 0)
+            route = fit_route_above(a.name, dev)
+            above = route["above_options"]
+            preset = dataclasses.replace(preset, routing={**preset.routing, "above_options": above,
+                                                          "measured": route})
+            path = save_preset(preset)
         print(f"\n{a.name}: decision model on {backend}, pointer head from its decision.json; above "
               f"{above} options it reads as vectors: layers "
               + ", ".join(f"{f.name}@{f.layer}" for f in fitted.formulations)
               + f", center {fitted.center}, tau {fitted.tau}")
         print(f"  the fallback alone scores {c['dev_accuracy']:.3f} ± {c['dev_accuracy_stderr']:.3f} "
-              f"on the dev sets (n={c['n_dev']}) -> {path}")
+              f"on the dev sets (n={c['n_dev']})")
+        if route and above:
+            print(f"  above {above} options it is {route['speedup']:.1f}x faster and "
+                  f"{route['accuracy_cost'] * 100:+.1f} points less accurate, on {route['set']}")
+        elif route:
+            print(f"  routing off: never {ROUTE_SPEEDUP:.0f}x faster within {ROUTE_COUNTS[-1]} options "
+                  f"on {route['set']}")
+        print(f"  -> {path}")
         print(f"\nUse it: jul ask ... --model {a.name} --backend {backend}"
-              f"   (route_above=0 on a call reads everything with the pointer head)")
+              f"   (route_above=0 on a call buys those points back)")
         return
     try:
         preset = calibrate(a.name, repo=a.repo, backend=a.backend, data=a.data,
@@ -398,8 +416,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--no-routing", action="store_true",
                    help="add, decision model: skip fitting the vector reading long questions fall back to")
     s.add_argument("--route-above", type=int,
-                   help="add, decision model: option count above which it falls back to vectors "
-                        "(default: its decision.json, else 32)")
+                   help="add, decision model: option count above which it falls back to vectors; "
+                        "0 disables the routing. Default: measured (or its decision.json, if it says)")
     s.set_defaults(fn=cmd_models)
 
     s = sub.add_parser("lab", help="research commands")

@@ -300,6 +300,61 @@ def extract(backbone: Backbone, dev: list[DevSet], generic_texts: list[str],
 
 # --- the command ----------------------------------------------------------------------------------
 
+#: Option counts the routing threshold is looked for at, and the speedup that has to be reached. The
+#: pointer head is worth a few points at every count (JOURNAL §9 tervicies: about 5 on massive, flat over
+#: the range), so the threshold is not "where accuracy stops suffering" — it is where the speed is worth
+#: those points. `route_above=0` on a call buys them back.
+ROUTE_COUNTS = (5, 10, 20, 30, 40)
+ROUTE_SPEEDUP = 3.0
+
+
+def fit_route_above(name: str, dev: list[DevSet], per_cell: int = 40, seed: int = 0) -> dict:
+    """Where reading a long question as vectors becomes `ROUTE_SPEEDUP` times faster, and what it costs.
+
+    Both readings answer the same questions, drawn from the dev set with the most labels: only the number
+    of options changes, so it is not confounded with the task. Option lists are fixed per subset, as a
+    real question's is, or every call would re-encode its options and the vector reading would look slow.
+    """
+    from .client import TypeSafeClient
+    from .types import Choice
+
+    d = max(dev, key=lambda s: len(s.labels))
+    rng = np.random.default_rng(seed)
+    client, cells = TypeSafeClient(model=name), {}
+    try:
+        for k in ROUTE_COUNTS:
+            if k >= len(d.labels):
+                break
+            n_subsets = max(1, round(per_cell * len(d.labels) / (k * len(d.texts))))
+            subsets = [list(rng.permutation(d.labels)[:k]) for _ in range(n_subsets)]
+            work = [(s, text, d.labels[y]) for s in subsets
+                    for text, y in zip(d.texts, d.y) if d.labels[y] in s]
+            for reading, above in (("pointer", 0), ("vector", 2)):
+                ok, lat = 0, []
+                for options, text, label in work:
+                    t0 = time.perf_counter()
+                    answer = client.system_one(state=text, route_above=above, questions={
+                        "label": Choice(instructions=d.name, criteria=options)}).answers["label"]
+                    lat.append(time.perf_counter() - t0)
+                    ok += answer.choice == label
+                cells[f"{k}-{reading}"] = {"n": len(work), "accuracy": ok / max(1, len(work)),
+                                           "p50_ms": float(np.median(lat[2:] or lat) * 1000)}
+    finally:
+        client.close()
+
+    report = {"set": d.name, "per_cell": per_cell, "counts": list(ROUTE_COUNTS), "cells": cells,
+              "speedup_target": ROUTE_SPEEDUP}
+    for k in ROUTE_COUNTS:
+        p, v = cells.get(f"{k}-pointer"), cells.get(f"{k}-vector")
+        if p and v and p["p50_ms"] >= ROUTE_SPEEDUP * v["p50_ms"]:
+            report["above_options"] = k
+            report["accuracy_cost"] = p["accuracy"] - v["accuracy"]
+            report["speedup"] = p["p50_ms"] / v["p50_ms"]
+            return report
+    report["above_options"] = 0          # never worth it on this model: no routing
+    return report
+
+
 def calibrate(name: str, repo: str | None = None, backend: str | None = None, data: Path | None = None,
               n_dev: int = 50, n_generic: int = 200, home: Path | None = None) -> Preset:
     backend = resolve_backend(backend)
