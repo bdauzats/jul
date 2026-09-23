@@ -205,6 +205,47 @@ formulations are averaged, then `softmax(cosine / tau)`.
 The model never writes anything. Everything state-independent — the prompt prefix, the option vectors,
 the center — is computed once, so a call only pays for its own tokens.
 
+## Every reading, and every setting
+
+Four ways to read a model. A preset picks one; a call may override it.
+
+| Reading | What it compares | Chosen by | Available on |
+| --- | --- | --- | --- |
+| **vector** (default) | cosine between the state's hidden state and each option's, `softmax(cos / tau)` | preset `method: "vector"` | any model |
+| **letters** | the logits of the option letters (A, B, C…) at the next position | `method="letters"`, per call or per client | any model; a tuned head overrides it |
+| **pointer** | a trained pointer head, at the delimiter tokens of the format in `decision.json` | preset `method: "pointer"` | decision models only |
+| **tuned head** | a logistic head fitted by `autotune` on vector features | `autotune()` plus a `Context` | pins the reading to vectors |
+
+A decision model may also **route by option count**: below the threshold the pointer head answers, above
+it the vector reading does. The pointer reads every option on every call, so its cost grows with the option
+list (65 ms at 3 options, 868 ms at 59) while the vector reading is flat; past ~30 options it stops earning
+that latency. Routing is per question, so one call can mix both. Measured on `massive`, 59 options, same
+weights: **868 ms → 77 ms at equal accuracy**.
+
+| Setting | Where it lives | Default | What it does |
+| --- | --- | --- | --- |
+| `formulations` | preset | 2 built in | the prompts, and the layer each is read at |
+| `tau` | preset | per model | temperature of `softmax(cos / tau)` |
+| `center` | preset | `"options"` | what is subtracted before the cosine: `options`, `generic`, `none` |
+| `one_word` | preset | — | layer and tau of the single-formulation variant (`one_word_only=True`) |
+| `head.temperature` | `decision.json` | 1.954 for ours | divides the pointer logits; never changes an answer |
+| `limits.max_state_tokens` / `max_branch_tokens` | `decision.json` | 384 / 1024 | where a too-long state or question is cut |
+| `routing.above_options` | `decision.json` | 32 (MLX 4-bit only) | option count above which the vector reading answers |
+| `route_above=N` | per call | the model's value | overrides that threshold; `0` disables routing |
+| `method=` | per call or client | `"vector"` | `vector` or `letters`; ignored on a pointer preset |
+| `one_word_only=` | client | `False` | one formulation instead of two: faster, a little less accurate |
+| `backend=` | client, or `JUL_BACKEND` | auto | `mlx` or `torch` |
+| `JUL_BATCH_TOKENS` / `JUL_BATCH_SIZE` | environment | per backend | how many rows the backbone batches at once |
+
+The threshold of 32 is **not measured**: it is read off four development sets whose option counts differ
+along with their tasks, so option count is confounded with difficulty. Subsampling the options of one set
+would isolate it (JOURNAL §9 tervicies).
+
+And routing only works on a **local** weights directory today: the fallback's fitted numbers are read from
+`decision.json`, which cannot be written inside a Hub repo. They belong in the preset, next to every other
+fitted number, and `jul models add` should fit them — until it does, a model served from the Hub reads with
+the pointer head whatever its option count.
+
 ## Two presets, and a decision model
 
 | Preset                          | Model                           | Layers  |    tau | Latency (p50) | Jev bench, zero-shot |

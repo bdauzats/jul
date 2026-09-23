@@ -68,6 +68,9 @@ class DecisionSpec:
     max_state_tokens: int
     max_branch_tokens: int
     directory: Path
+    #: Optional: above `above_options` options the pointer head stops earning its latency, so the call
+    #: falls back to the vector reading described here. None = never route. See `route_above`.
+    routing: dict[str, Any] | None
 
     @classmethod
     def load(cls, directory: str | Path, file: str | Path | None = None) -> "DecisionSpec":
@@ -86,7 +89,27 @@ class DecisionSpec:
                    head_file=head["file"], query=head["query"], key=head["key"], dim=int(head["dim"]),
                    temperature=float(head["temperature"]),
                    max_state_tokens=int(limits["max_state_tokens"]),
-                   max_branch_tokens=int(limits["max_branch_tokens"]), directory=directory)
+                   max_branch_tokens=int(limits["max_branch_tokens"]), directory=directory,
+                   routing=d.get("routing"))
+
+
+    @property
+    def route_above(self) -> int | None:
+        """Option count above which the vector reading answers instead; None when the model routes nowhere."""
+        return int(self.routing["above_options"]) if self.routing else None
+
+    def vector_preset(self, name: str, backend: str | None):
+        """The preset of the vector reading this model falls back to, built from its own decision.json.
+
+        Only the reading matters here: the backbone is already loaded, so the preset carries no repo. A
+        "generic" center needs its asset next to the weights, and degrades to the option mean without it.
+        """
+        from .presets import Formulation, Preset
+        v = self.routing["vector"]
+        return Preset(name=name, repo="", backend=backend, formulations=tuple(
+            Formulation(f["name"], f["template"], int(f["layer"])) for f in v["formulations"]),
+            tau=float(v["tau"]), center=v.get("center", "options"), asset_dir=self.directory,
+            latency_ms="?", quality="vector fallback of a decision model", method="vector")
 
 
 def spec_source(repo: str) -> str | None:

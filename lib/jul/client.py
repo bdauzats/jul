@@ -100,8 +100,12 @@ class TypeSafeClient:
     # --- the call -----------------------------------------------------------------------------
 
     def system_one(self, state: Any, questions: Mapping[str, Question], context: Context | str | None = None,
-                   model: str | None = None, method: str | None = None, **_ignored: Any) -> SystemOneResponse:
+                   model: str | None = None, method: str | None = None, route_above: int | None = None,
+                   **_ignored: Any) -> SystemOneResponse:
         """Answer every question about one state, in a single pass per formulation.
+
+        `route_above` overrides, for this call, the option count above which a decision model hands a
+        question to its vector reading (its decision.json sets the default; 0 disables the routing).
 
         `_ignored` swallows the Jev arguments that mean nothing locally (`response_model`, `retry`,
         `extra_body`, ...) so existing code keeps running.
@@ -115,13 +119,32 @@ class TypeSafeClient:
         answers, tokens = {}, 0
 
         if engine.pointer is not None:
-            # A decision model reads the raw state in its own format, once for all the questions.
-            items = [(_kind_of(q), q.instructions, options_of(q)) for q in questions.values()]
-            logits, tokens = engine.pointer.logits(state, items)
-            for (name, question), (kind, _, options), z in zip(questions.items(), items, logits):
-                answers[name] = _format(kind, question, options, self._calibrated(ctx, kind, question, options, z))
-            return SystemOneResponse(answers=answers, model=self._preset.name, usage=Usage(input_tokens=tokens),
-                                     request_id=str(uuid.uuid4()))
+            # A decision model reads the raw state in its own format, once for all the questions. Beyond
+            # `route_above` options the pointer head costs more latency than it earns (JOURNAL §9 tervicies),
+            # so those questions go to the vector reading its decision.json describes.
+            above = engine.pointer.spec.route_above if route_above is None else route_above
+            routed = {n: q for n, q in questions.items() if above and len(options_of(q)) > above}
+            direct = {n: q for n, q in questions.items() if n not in routed}
+            if direct:
+                items = [(_kind_of(q), q.instructions, options_of(q)) for q in direct.values()]
+                logits, tokens = engine.pointer.logits(state, items)
+                for (name, question), (kind, _, options), z in zip(direct.items(), items, logits):
+                    answers[name] = _format(kind, question, options,
+                                            self._calibrated(ctx, kind, question, options, z))
+            if routed:
+                pointer_preset, engine.preset = engine.preset, engine.pointer.spec.vector_preset(
+                    f"{engine.preset.name}-vector", self.backend)
+                try:
+                    for name, question in routed.items():
+                        kind, options = _kind_of(question), options_of(question)
+                        probabilities, spent = self._answer_probabilities(engine, kind, "vector", question,
+                                                                         options, text, ctx, shared)
+                        tokens += spent
+                        answers[name] = _format(kind, question, options, probabilities)
+                finally:
+                    engine.preset = pointer_preset
+            return SystemOneResponse(answers={n: answers[n] for n in questions}, model=self._preset.name,
+                                     usage=Usage(input_tokens=tokens), request_id=str(uuid.uuid4()))
 
         for name, question in questions.items():
             kind = _kind_of(question)
