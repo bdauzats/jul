@@ -9,9 +9,9 @@ cache inside `PromptTemplate`), the option vectors, and the center. A call there
 tokens only. The "one word" formulation does not mention the question, so its vector is computed once
 per state and shared by every question of the call.
 
-`letters` is the older reading used for `Noul` and `Score`: the options are listed in the prompt and
-the answer is read from the logits of the answer tokens. Neither reading has been validated for those
-two types yet (see PLAN.md, etape 0).
+`letters` is the older reading, kept for `method="letters"` and the lab's baselines: the options are
+listed in the prompt and the answer is read from the logits of the answer tokens. Vectors are the
+default for every type, `Noul` and `Score` included, since they beat letters there too (README).
 """
 
 from __future__ import annotations
