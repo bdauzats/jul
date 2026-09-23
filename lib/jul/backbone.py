@@ -31,8 +31,9 @@ MODELS: dict[str, dict[str, str]] = {
 }
 
 #: Size of a group in `PromptTemplate.run_batch`: rows x longest prompt (cached prefix included).
-BATCH_TOKENS = int(os.environ.get("JUL_BATCH_TOKENS", "16384"))
-BATCH_SIZE = int(os.environ.get("JUL_BATCH_SIZE", "64"))
+#: `JUL_BATCH_TOKENS` / `JUL_BATCH_SIZE` override them, read at each call like the other JUL_* variables.
+BATCH_TOKENS = 16384
+BATCH_SIZE = 64
 
 # Layers tapped during extraction, as fractions of the model depth.
 DEFAULT_LAYER_FRACTIONS = (0.25, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
@@ -186,6 +187,8 @@ class PromptTemplate:
             seqs, pools = [self.prefix_tokens + q for q in queries], [(p, p + n) for n in n_inputs]
         else:
             seqs, pools = queries, [(0, n) for n in n_inputs]
+        max_tokens = int(os.environ.get("JUL_BATCH_TOKENS") or BATCH_TOKENS)
+        max_rows = int(os.environ.get("JUL_BATCH_SIZE") or BATCH_SIZE)
         out: list = [None] * len(seqs)
         group: list[int] = []
 
@@ -197,7 +200,7 @@ class PromptTemplate:
 
         for i in sorted(range(len(seqs)), key=lambda i: len(seqs[i])):
             longest = len(seqs[i]) + (p if self._prefix is not None else 0)
-            if group and ((len(group) + 1) * longest > BATCH_TOKENS or len(group) >= BATCH_SIZE):
+            if group and ((len(group) + 1) * longest > max_tokens or len(group) >= max_rows):
                 flush()
                 group = []
             group.append(i)

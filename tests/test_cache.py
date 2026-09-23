@@ -101,3 +101,37 @@ def test_repeating_a_call_gives_the_same_answer(client):
     second = client.system_one(state="I was charged twice", questions=question)
     assert first.choices["team"].probabilities == second.choices["team"].probabilities
     assert first.request_id != second.request_id       # a fresh id per call
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("use_prefix_cache", [True, False])
+def test_an_mlx_batch_reads_the_vectors_of_single_queries(backbone, use_prefix_cache):
+    """Both halves of the features, at a middle layer and the last one, for texts of different
+    lengths. 4-bit kernels round a batch slightly differently from a single row (~2e-4, the same order
+    as a cached prefix against a full prefill), padded or not."""
+    texts = ["I was charged twice for my subscription", "the app crashes on export",
+             "do you offer annual plans?", "Je voudrais annuler ma commande"]
+    template = PromptTemplate(backbone, PREFIX, SUFFIX, use_prefix_cache=use_prefix_cache)
+    layers = [backbone.n_layers // 2, backbone.n_layers - 1]
+    batched = template.run_batch(texts, layers=layers)
+    for text, h in zip(texts, batched):
+        single, _ = template.run(text, layers=layers)
+        for layer in layers:
+            assert cosine(h[layer], single[layer]) > 0.999, (text, layer)
+    # the batch ran on its own cache: the template's prefix is untouched
+    again, _ = template.run(texts[0], layers=layers)
+    assert cosine(again[layers[1]], batched[0][layers[1]]) > 0.999
+
+
+@pytest.mark.slow
+def test_the_padding_of_an_mlx_batch_is_never_read(backbone, monkeypatch):
+    """Right padding under the causal mask alone: whatever tokens fill the padding, the real tokens
+    give exactly the same features."""
+    template = PromptTemplate(backbone, PREFIX, SUFFIX, use_prefix_cache=False)
+    texts = ["the app crashes on export", "I was charged twice for my subscription, and nobody answers"]
+    layers = [backbone.n_layers // 2, backbone.n_layers - 1]
+    reference = template.run_batch(texts, layers=layers)[0]
+    for pad in (777, 1234):
+        monkeypatch.setattr(backbone, "_pad", pad)
+        h = template.run_batch(texts, layers=layers)[0]
+        assert all(np.array_equal(h[layer], reference[layer]) for layer in layers), pad

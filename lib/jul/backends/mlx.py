@@ -1,4 +1,8 @@
-"""MLX backend (Apple Silicon), through mlx-lm."""
+"""MLX backend (Apple Silicon), through mlx-lm.
+
+`forward_batch` runs several queries in one forward, as the torch backend does: padded on the right,
+under the causal mask alone, since a real token never sees the padding after it.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +13,7 @@ from pathlib import Path
 import mlx.core as mx
 import numpy as np
 from mlx_lm import load
-from mlx_lm.models.cache import can_trim_prompt_cache, make_prompt_cache
+from mlx_lm.models.cache import KVCache, can_trim_prompt_cache, make_prompt_cache
 
 from ..backbone import Backbone
 
@@ -47,9 +51,12 @@ class _Tap:
     def __call__(self, *args, **kwargs):
         h = self.block(*args, **kwargs)
         if self.idx in self.bb._want:
-            start, end = self.bb._pool
+            pool = self.bb._pool
+            last = h[mx.arange(h.shape[0]), self.bb._last]
+            # mean in float32, rounded back to the model dtype like `h[:, start:end].mean(1)` was
+            mean = (mx.where(pool, h, 0).astype(mx.float32).sum(1) / pool.sum(1)).astype(h.dtype)
             # [last token ; mean over the input tokens]
-            self.bb._captured[self.idx] = mx.concatenate([h[:, -1, :], h[:, start:end, :].mean(1)], axis=-1)
+            self.bb._captured[self.idx] = mx.concatenate([last, mean], axis=-1)
         if self.bb._stop_at == self.idx:
             raise _StopForward
         return h
@@ -78,7 +85,10 @@ class MLXBackbone(Backbone):
         self._want: set[int] = set()
         self._stop_at: int | None = None
         self._captured: dict[int, mx.array] = {}
-        self._pool = (0, 1)
+        self._last: mx.array | None = None   # (B,) index of each row's last real token
+        self._pool: mx.array | None = None   # (B, T, 1) bool mask of each row's pooled positions
+        pad = getattr(self.tokenizer, "pad_token_id", None)
+        self._pad = pad if pad is not None else (self.tokenizer.eos_token_id or 0)
         lm = getattr(self.model, "language_model", self.model)  # multimodal wrappers (e.g. Qwen3.5) nest the text model
         self._inner = lm.model
         self._lm_head = lm.lm_head if hasattr(lm, "lm_head") else self._inner.embed_tokens.as_linear
@@ -86,19 +96,36 @@ class MLXBackbone(Backbone):
     def forward(self, tokens, layers=(), logits=False, pool=None, prefix: _Prefix | None = None, cache=None):
         """`cache` (an mlx-lm prompt cache, advanced in place) is kept for the dev scripts."""
         if prefix is None:
-            return self._run(tokens, cache, layers, logits, pool)
+            return self._first(self._run([tokens], cache, layers, logits, [pool]))
         if prefix.snapshot is not None:
-            return self._run(tokens, self._restored(prefix.snapshot), layers, logits, pool)
+            return self._first(self._run([tokens], self._restored(prefix.snapshot), layers, logits, [pool]))
         try:
-            return self._run(tokens, prefix.cache, layers, logits, pool)
+            return self._first(self._run([tokens], prefix.cache, layers, logits, [pool]))
         finally:
             for c in prefix.cache:
                 if c.offset > prefix.n:
                     c.trim(c.offset - prefix.n)
 
+    def forward_batch(self, queries, layers=(), pools=None, prefix: _Prefix | None = None):
+        pools = pools or [None] * len(queries)
+        if len(queries) == 1 or (prefix is not None and not _repeatable(prefix)):
+            # a recurrent state (or a rotating window) is not repeated over a batch: one query at a time
+            return super().forward_batch(queries, layers, pools, prefix)
+        cache = None
+        if prefix is not None:
+            # a fresh cache holding the prefix once per row; the template's own cache is not touched
+            cache = make_prompt_cache(self.model)
+            for new, c in zip(cache, prefix.cache):
+                keys, values = c.state
+                new.state = (mx.repeat(keys, len(queries), axis=0), mx.repeat(values, len(queries), axis=0))
+        captured, _ = self._run(queries, cache, layers, False, pools)
+        # every group has its own shape (rows x width): MLX would keep the freed buffers of each one
+        mx.clear_cache()
+        return [{k: v[i] for k, v in captured.items()} for i in range(len(queries))]
+
     def cache_prefix(self, tokens) -> _Prefix:
         cache = make_prompt_cache(self.model)
-        self._run(tokens, cache, logits=True)
+        self._run([tokens], cache, logits=True)
         mx.eval([c.state for c in cache])
         if can_trim_prompt_cache(cache):
             return _Prefix(len(tokens), cache=cache)
@@ -128,20 +155,40 @@ class MLXBackbone(Backbone):
             c.state = list(state)
         return cache
 
-    def _run(self, tokens, cache=None, layers=(), logits=False, pool=None):
+    @staticmethod
+    def _first(result):
+        captured, logits = result
+        return {k: v[0] for k, v in captured.items()}, (logits[0] if logits is not None else None)
+
+    def _run(self, seqs, cache=None, layers=(), logits=False, pools=None):
+        """Right-padded batch of token lists. Returns ({layer: (B, 2d)}, (B, vocab) or None)."""
+        lengths = [len(s) for s in seqs]
+        width = max(lengths)
+        ids = np.full((len(seqs), width), self._pad, dtype=np.int32)
+        pool = np.zeros((len(seqs), width, 1), dtype=bool)
+        for i, (s, p) in enumerate(zip(seqs, pools or [None] * len(seqs))):
+            ids[i, : len(s)] = s
+            start, end = p or (0, len(s))
+            pool[i, start:end] = True
         self._want = set(layers)
-        self._pool = pool or (0, len(tokens))
+        self._last = mx.array([n - 1 for n in lengths])
+        self._pool = mx.array(pool)
         self._stop_at = None if logits else (max(layers) if layers else None)
         self._captured = {}
-        x = mx.array(tokens)[None]
         out = None
         try:
-            h = self._inner(x, cache=cache)
+            h = self._inner(mx.array(ids), cache=cache)
             if logits:
-                out = self._lm_head(h[:, -1:, :])[0, 0].astype(mx.float32)
+                out = self._lm_head(h[mx.arange(len(seqs)), self._last]).astype(mx.float32)
         except _StopForward:
             pass
-        captured = {k: v[0].astype(mx.float32) for k, v in self._captured.items()}
+        captured = {k: v.astype(mx.float32) for k, v in self._captured.items()}
         mx.eval(list(captured.values()) + ([out] if out is not None else []))
         return ({k: np.array(v) for k, v in captured.items()},
                 np.array(out) if out is not None else None)
+
+
+def _repeatable(prefix: _Prefix) -> bool:
+    """A plain KV cache can be copied once per row of a batch; a recurrent state or a rotating window
+    goes through `forward`, one query at a time."""
+    return prefix.cache is not None and all(type(c) is KVCache for c in prefix.cache)

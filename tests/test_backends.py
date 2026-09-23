@@ -101,6 +101,21 @@ def test_run_batch_keeps_a_group_under_the_token_budget(monkeypatch):
     assert backbone.batches == [3, 3, 1]
 
 
+def test_the_batch_limits_are_read_at_each_call(monkeypatch):
+    backbone = _Counting()
+    template = PromptTemplate(backbone, "", "")
+    monkeypatch.setenv("JUL_BATCH_SIZE", "2")
+    template.run_batch(["x"] * 5, layers=[0])
+    assert backbone.batches == [2, 2, 1]
+
+
+@pytest.mark.skipif(not HAS_TORCH, reason="torch is not installed")
+def test_an_unknown_jul_dtype_names_the_accepted_ones(monkeypatch):
+    monkeypatch.setenv("JUL_DTYPE", "fp16")
+    with pytest.raises(ValueError, match="bfloat16, float16, float32"):
+        Backbone(SMALL, "torch")
+
+
 @pytest.mark.skipif(not HAS_TORCH, reason="torch is not installed")
 def test_gpus_without_bfloat16_tensor_cores_default_to_float16():
     import torch
@@ -181,7 +196,10 @@ def test_the_torch_prefix_cache_does_not_drift_over_many_calls(small_torch):
 def test_a_torch_batch_reads_the_vectors_of_single_queries(small_torch, use_prefix_cache):
     """Right padding without a mask: the causal mask alone keeps the padding out of the real tokens.
     Both halves of the features (last token, and mean over the input) must match, at a middle layer
-    and at the last one, for texts of different lengths in the same batch."""
+    and at the last one, for texts of different lengths in the same batch. In bfloat16 (MPS, CUDA) a
+    batch rounds slightly differently from a single row, ~1e-4."""
+    import torch
+    tolerance = 0.9999 if small_torch.model.dtype == torch.float32 else 0.999
     prefix, suffix = ONE_WORD.split("{state}")
     template = PromptTemplate(small_torch, prefix, suffix, use_prefix_cache=use_prefix_cache)
     layers = [small_torch.n_layers // 2, small_torch.n_layers - 1]
@@ -189,10 +207,26 @@ def test_a_torch_batch_reads_the_vectors_of_single_queries(small_torch, use_pref
     for text, h in zip(TEXTS, batched):
         single, _ = template.run(text, layers=layers)
         for layer in layers:
-            assert cosine(h[layer], single[layer]) > 0.9999, (text, layer)
+            assert cosine(h[layer], single[layer]) > tolerance, (text, layer)
     # the batch ran on a copy: the shared prefix is untouched
     again, _ = template.run(TEXTS[0], layers=layers)
-    assert cosine(again[layers[1]], batched[0][layers[1]]) > 0.9999
+    assert cosine(again[layers[1]], batched[0][layers[1]]) > tolerance
+
+
+@pytest.mark.slow
+@pytest.mark.torch
+@pytest.mark.skipif(not HAS_TORCH, reason="torch is not installed")
+def test_the_padding_of_a_torch_batch_is_never_read(small_torch, monkeypatch):
+    """Whatever tokens fill the padding, the real tokens give exactly the same features."""
+    prefix, suffix = ONE_WORD.split("{state}")
+    template = PromptTemplate(small_torch, prefix, suffix, use_prefix_cache=False)
+    texts = [TEXTS[1], TEXTS[0] + ", and nobody answers my emails"]
+    layers = [small_torch.n_layers // 2, small_torch.n_layers - 1]
+    reference = template.run_batch(texts, layers=layers)[0]
+    for pad in (777, 1234):
+        monkeypatch.setattr(small_torch, "_pad", pad)
+        h = template.run_batch(texts, layers=layers)[0]
+        assert all(np.array_equal(h[layer], reference[layer]) for layer in layers), pad
 
 
 @pytest.mark.slow

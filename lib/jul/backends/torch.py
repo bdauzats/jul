@@ -77,6 +77,8 @@ class TorchBackbone(Backbone):
         super().__init__(name)
         self.device = torch.device(device or os.environ.get("JUL_DEVICE") or default_device())
         if dtype is None and os.environ.get("JUL_DTYPE"):
+            if os.environ["JUL_DTYPE"] not in DTYPES:
+                raise ValueError(f"JUL_DTYPE={os.environ['JUL_DTYPE']!r}: expected one of {', '.join(DTYPES)}")
             dtype = DTYPES[os.environ["JUL_DTYPE"]]
         if dtype is None:
             capability = torch.cuda.get_device_capability(self.device) if self.device.type == "cuda" else None
@@ -95,14 +97,16 @@ class TorchBackbone(Backbone):
         self._stop_at: int | None = None
         self._captured: dict[int, torch.Tensor] = {}
         self._last: torch.Tensor | None = None   # (B,) index of each row's last real token
-        self._pool: torch.Tensor | None = None   # (B, T, 1) mask of each row's pooled positions
+        self._pool: torch.Tensor | None = None   # (B, T, 1) bool mask of each row's pooled positions
 
     def _hook(self, idx: int):
         def hook(module, args, output):
             h = output[0] if isinstance(output, tuple) else output
             if idx in self._want:
                 rows = torch.arange(h.shape[0], device=h.device)
-                mean = (h.float() * self._pool).sum(1) / self._pool.sum(1)
+                # masked_fill, not a product: a padding position that overflows float16 (inf) would
+                # give inf * 0 = nan and spoil the row's mean
+                mean = h.masked_fill(~self._pool, 0).sum(1, dtype=torch.float32) / self._pool.sum(1)
                 # [last token ; mean over the input tokens]
                 self._captured[idx] = torch.cat([h[rows, self._last].float(), mean], dim=-1)
             if self._stop_at == idx:
@@ -159,11 +163,11 @@ class TorchBackbone(Backbone):
         """Right-padded batch of token lists. Returns ({layer: (B, 2d)}, (B, vocab) or None, cache)."""
         lengths = [len(s) for s in seqs]
         ids = torch.full((len(seqs), max(lengths)), self._pad, dtype=torch.long)
-        pool = torch.zeros(len(seqs), max(lengths), 1)
+        pool = torch.zeros(len(seqs), max(lengths), 1, dtype=torch.bool)
         for i, (s, p) in enumerate(zip(seqs, pools or [None] * len(seqs))):
             ids[i, : len(s)] = torch.tensor(s, dtype=torch.long)
             start, end = p or (0, len(s))
-            pool[i, start:end] = 1
+            pool[i, start:end] = True
         self._want = set(layers)
         self._stop_at = None if logits else (max(layers) if layers else None)
         self._captured = {}

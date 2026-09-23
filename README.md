@@ -60,6 +60,10 @@ The backend defaults to MLX when it is installed on Apple Silicon, else PyTorch.
 device defaults to cuda > mps > cpu (`JUL_DEVICE` overrides it), in bfloat16 — float32 on CPU, float16
 on GPUs older than Ampere such as the T4, which have no bfloat16 tensor cores (`JUL_DTYPE` overrides it).
 
+Both backends read many texts through one template in batches: compiling a question's options, a
+context's center, `autotune` and `jul models add`. A group holds at most `JUL_BATCH_TOKENS` tokens
+(rows × longest prompt, 16384) and `JUL_BATCH_SIZE` rows (64). A single call (`ask`) is read alone.
+
 **The two backends do not run the same weights.** The MLX presets are 4-bit; PyTorch loads the
 original bf16 weights. On the same weights the two backends read the same vectors (cosine > 0.9999,
 `tests/test_backends.py`), but 4-bit moves them to a cosine of ~0.95 with bf16. The presets' tau and
