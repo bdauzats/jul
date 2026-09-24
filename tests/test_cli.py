@@ -135,5 +135,5 @@ def test_ask_says_to_run_setup_when_no_backend_is_installed(monkeypatch):
     monkeypatch.delenv("JUL_BACKEND", raising=False)
     monkeypatch.setattr("jul.backbone.resolve_backend",
                         lambda _: (_ for _ in ()).throw(ImportError("none")))
-    with pytest.raises(SystemExit, match=r"No backend installed. Run: jul setup --model qwen3.5-9b"):
-        main(["ask", "choice", "q", "-o", "a", "-o", "b", "--state", "s", "--model", "qwen3.5-9b"])
+    with pytest.raises(SystemExit, match=r"No backend installed. Run: jul setup --model minicpm5-2b"):
+        main(["ask", "choice", "q", "-o", "a", "-o", "b", "--state", "s", "--model", "minicpm5-2b"])

@@ -29,10 +29,10 @@ def test_saving_and_loading_keeps_description_examples_and_centers(home):
 
 @few
 def test_a_center_belongs_to_one_preset_and_one_formulation(home):
-    minicpm, qwen = resolve("minicpm5-2b"), resolve("qwen3.5-9b")
+    minicpm, wemm = resolve("minicpm5-2b"), resolve("wemm-4b-4bit")
     context = Context(name="t", examples=["a"])
     context.set_center(minicpm, minicpm.formulations[0], np.ones(3))
-    assert context.center_for(qwen, qwen.formulations[0]) is None
+    assert context.center_for(wemm, wemm.formulations[0]) is None
     assert context.center_for(minicpm, minicpm.formulations[1]) is None
 
 
@@ -92,7 +92,7 @@ def test_a_question_digest_is_tied_to_the_preset_and_the_options():
     options = [Option("a", "x"), Option("b", "y")]
     base = question_digest("minicpm5-2b", "choice", "q", options)
     assert base == question_digest("minicpm5-2b", "choice", "q", options)
-    assert base != question_digest("qwen3.5-9b", "choice", "q", options)
+    assert base != question_digest("wemm-4b-4bit", "choice", "q", options)
     assert base != question_digest("minicpm5-2b", "choice", "other question", options)
     assert base != question_digest("minicpm5-2b", "choice", "q", options + [Option("c", "z")])
 

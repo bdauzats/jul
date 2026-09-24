@@ -24,10 +24,8 @@ BACKENDS = ("mlx", "torch")
 
 #: Preset name -> repo per backend. A name missing here is used as the repo itself.
 MODELS: dict[str, dict[str, str]] = {
+    "wemm-4b-4bit": {"mlx": "usejul/WeMM-Embedding-4B-mlx-4bit", "torch": "tencent/WeMM-Embedding-4B"},
     "minicpm5-2b": {"mlx": "openbmb/MiniCPM5-2B-MLX", "torch": "openbmb/MiniCPM5-2B"},
-    "qwen3-0.6b": {"mlx": "mlx-community/Qwen3-0.6B-4bit", "torch": "Qwen/Qwen3-0.6B"},
-    "qwen3-1.7b": {"mlx": "mlx-community/Qwen3-1.7B-4bit", "torch": "Qwen/Qwen3-1.7B"},
-    "qwen3.5-9b": {"mlx": "mlx-community/Qwen3.5-9B-4bit", "torch": "Qwen/Qwen3.5-9B"},
 }
 
 #: Size of a group in `PromptTemplate.run_batch`: rows x longest prompt (cached prefix included).

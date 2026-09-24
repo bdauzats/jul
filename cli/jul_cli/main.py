@@ -3,7 +3,7 @@
   jul setup                    # backend, weights and a first check for the default model
   jul ask choice "Which team should handle this ticket?" \
       -o billing:"payments, invoices" -o technical:"bugs, errors" \
-      --state "I was charged twice" --model minicpm5-2b
+      --state "I was charged twice" --model wemm-4b-4bit
 
   jul run questions.yaml --input tickets.jsonl --output answers.jsonl --context tickets
   jul context create tickets --description "Support tickets of an online bank" --examples sample.txt
@@ -24,7 +24,7 @@ from pathlib import Path
 
 from jul import Choice, Context, Noul, NoulCriteria, Score, TypeSafeClient
 from jul.backbone import BACKENDS
-from jul.presets import ALIASES, PRESETS
+from jul.presets import ALIASES, DEFAULT_MODEL, PRESETS
 
 TYPES = {"choice": Choice, "noul": Noul, "score": Score}
 
@@ -186,7 +186,7 @@ def cmd_autotune(a):
     except FileNotFoundError:
         ctx = Context(name=a.context)
     client = TypeSafeClient(model=a.model, backend=a.backend, context=ctx)
-    print(f"tuning on {len(labeled)} labeled examples with {a.model or 'minicpm5-2b'} ...", file=sys.stderr)
+    print(f"tuning on {len(labeled)} labeled examples with {a.model or DEFAULT_MODEL} ...", file=sys.stderr)
     reports = client.autotune(ctx, questions, labeled)
     for report in reports.values():
         print(report)
@@ -397,7 +397,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--seeds", help="JSONL of real examples: {state|text, answers?}; answers optional")
     s.add_argument("--output", required=True, help="JSONL in the format of autotune --labeled")
     s.add_argument("--per-option", type=int, default=30, help="texts per option (default 30)")
-    s.add_argument("--writer", default="qwen3.5-9b", help="preset or mlx-lm repo (default qwen3.5-9b)")
+    s.add_argument("--writer", required=True, help="a generative mlx-lm repo, e.g. an instruct model of 7B or more")
     s.add_argument("--batch", type=int, default=8, help="texts asked per call (default 8)")
     s.add_argument("--temperature", type=float, default=0.9)
     s.add_argument("--seed", type=int, default=0)

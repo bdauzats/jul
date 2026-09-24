@@ -1,14 +1,14 @@
 """The public API: `TypeSafeClient`, drop-in for the TypeSafe (Jev) Python SDK, plus context and tuning.
 
     from jul import TypeSafeClient, Choice
-    client = TypeSafeClient(model="minicpm5-2b")
+    client = TypeSafeClient(model="wemm-4b-4bit")
     response = client.system_one(state={"ticket": "charged twice"},
                                  questions={"team": Choice(instructions="Which team?",
                                                            criteria={"billing": "...", "tech": "..."})})
     response.choices["team"].choice
 
 Everything runs locally: no API key, no network. The model is loaded on first use and only one is
-held in memory at a time, since Qwen3.5-9B alone weighs about 5.5 GB.
+held in memory at a time, since a single model can weigh several GB.
 """
 
 from __future__ import annotations

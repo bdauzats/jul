@@ -31,8 +31,8 @@ def test_normalize_gives_unit_vectors():
 
 def test_presets_are_aliased_and_unknown_names_are_refused():
     assert resolve("fast").name == "minicpm5-2b"
-    assert resolve("accurate").name == "qwen3.5-9b"
-    assert resolve(None).name == "minicpm5-2b"
+    assert resolve("accurate").name == "wemm-4b-4bit"
+    assert resolve(None).name == "wemm-4b-4bit"
     try:
         resolve("gpt-9")
     except ValueError as e:
@@ -49,9 +49,9 @@ def test_every_preset_carries_a_layer_and_a_temperature():
 
 
 def test_the_one_word_variant_keeps_a_single_formulation():
-    preset = one_word_preset("qwen3.5-9b")
+    preset = one_word_preset("minicpm5-2b")
     assert len(preset.formulations) == 1
-    assert preset.tau != resolve("qwen3.5-9b").tau     # its own fitted temperature
+    assert preset.tau != resolve("minicpm5-2b").tau     # its own fitted temperature
 
 
 def test_minicpm_ships_its_generic_center():

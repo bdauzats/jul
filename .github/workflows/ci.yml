@@ -89,7 +89,7 @@ jobs:
           JUL_SLOW: "1"
           JUL_BACKEND: torch
           JUL_DEVICE: cpu
-          JUL_TEST_MODEL: qwen3-0.6b
+          JUL_TEST_MODEL: Qwen/Qwen3-0.6B
         run: pytest tests -m torch -q -rs
       - name: The CLI runs end to end
         env:

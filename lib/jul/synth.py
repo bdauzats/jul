@@ -11,9 +11,10 @@ Two steps:
      full option list (to aim at what sets the option apart), the seeds labeled with that option and
      the texts it already wrote (to keep varying). Duplicates and copies of seeds are dropped.
 
-The writer is any `str -> str` function. `mlx_writer(...)` wraps a local model through mlx-lm. JOURNAL
+The writer is any `str -> str` function. `mlx_writer(repo)` wraps a local generative model through
+mlx-lm; there is no default, since jul's own presets read models rather than make them write. JOURNAL
 exp. 18: the writer's quality decides everything (MiniCPM5-2B described texts instead of writing them;
-Qwen3.5-9B wrote realistic ones).
+a 9B instruct model wrote realistic ones).
 """
 
 from __future__ import annotations
@@ -100,7 +101,7 @@ def parse_lines(output: str) -> list[str]:
     return out
 
 
-def mlx_writer(model: str = "qwen3.5-9b", max_tokens: int = 1024, temperature: float = 0.9) -> Writer:
+def mlx_writer(model: str, max_tokens: int = 1024, temperature: float = 0.9) -> Writer:
     """A local writer through mlx-lm. Sampling, not greedy: batches must not repeat each other."""
     from mlx_lm import generate, load
     from mlx_lm.sample_utils import make_sampler

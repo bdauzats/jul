@@ -9,14 +9,14 @@
    "p50_ms": 59.7
   }
  },
- "qwen3.5-9b": {
+ "wemm-4b-4bit": {
   "financialphrasebank": {
-   "acc": 0.8,
-   "p50_ms": 350.7
+   "acc": 0.867,
+   "p50_ms": 261.5
   },
   "massive": {
-   "acc": 0.767,
-   "p50_ms": 182.3
+   "acc": 0.833,
+   "p50_ms": 143.5
   }
  }
 }

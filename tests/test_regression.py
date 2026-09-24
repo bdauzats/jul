@@ -47,7 +47,7 @@ def evaluate(client, dataset) -> tuple[float, float]:
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("preset", ["minicpm5-2b", "qwen3.5-9b"])
+@pytest.mark.parametrize("preset", ["minicpm5-2b", "wemm-4b-4bit"])
 def test_accuracy_and_latency_hold(preset):
     expected = baseline()[preset]
     client = TypeSafeClient(model=preset)

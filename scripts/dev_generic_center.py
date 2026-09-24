@@ -35,7 +35,7 @@ from dev_common import short_names  # noqa: E402
 from jul.backbone import MODELS, Backbone, PromptTemplate  # noqa: E402
 from jul.presets import resolve  # noqa: E402
 
-MODEL = sys.argv[1] if len(sys.argv) > 1 else "qwen3.5-9b"
+MODEL = sys.argv[1] if len(sys.argv) > 1 else "minicpm5-2b"
 N_DEV = int(sys.argv[2]) if len(sys.argv) > 2 else 50
 N_GENERIC = int(sys.argv[3]) if len(sys.argv) > 3 else 200
 DEV = ["yahootopics", "empathetic", "massive", "financialphrasebank"]

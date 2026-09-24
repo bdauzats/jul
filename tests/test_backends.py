@@ -50,7 +50,7 @@ def test_what_mlx_learned_is_not_reused_by_torch():
 
 
 def test_a_backend_without_its_own_generic_center_falls_back_to_the_mlx_one():
-    preset = resolve("qwen3.5-9b")
+    preset = resolve("minicpm5-2b")
     f = preset.formulations[0]
     assert np.array_equal(preset.generic_center(f, "torch"), preset.generic_center(f))
 
@@ -131,13 +131,14 @@ def test_gpus_without_bfloat16_tensor_cores_default_to_float16():
 # --- the torch backend on its own -----------------------------------------------------------------
 #
 # These need torch but NOT MLX, so CI (Linux, no Apple Silicon) runs them on every push. The model is
-# small on purpose: `JUL_TEST_MODEL` overrides it, the default is ~1.2 GB in bf16.
+# small on purpose: `JUL_TEST_MODEL` overrides it. The default, a repo rather than a jul preset, is
+# ~1.2 GB in bf16.
 
 def cosine(a, b):
     return float(a @ b / np.linalg.norm(a) / np.linalg.norm(b))
 
 
-SMALL = os.environ.get("JUL_TEST_MODEL", "qwen3-0.6b")
+SMALL = os.environ.get("JUL_TEST_MODEL", "Qwen/Qwen3-0.6B")
 
 
 @pytest.fixture(scope="module")

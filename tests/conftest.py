@@ -1,7 +1,7 @@
 """Shared fixtures. Tests that load an MLX model are marked `slow` and skipped by default.
 
     pytest tests                 # fast tests only (the default)
-    JUL_SLOW=1 pytest tests      # everything, loads MiniCPM5-2B and Qwen3.5-9B
+    JUL_SLOW=1 pytest tests      # everything, loads MiniCPM5-2B and WeMM-Embedding-4B
     JUL_SLOW=1 pytest tests -m slow   # only the ones that need a model
 """
 
