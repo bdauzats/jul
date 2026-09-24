@@ -4,19 +4,28 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "jul"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Juste Un LLM - local typed decisions with the interface of the TypeSafe (Jev) SDK"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "NOTICE"]
 # The model runs on a backend installed as an extra: [mlx] on Apple Silicon, [torch] anywhere else.
 dependencies = ["numpy>=1.24"]
 
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
 ]
+
+[project.urls]
+Homepage = "https://github.com/bdauzats/jul"
+Repository = "https://github.com/bdauzats/jul"
+Issues = "https://github.com/bdauzats/jul/issues"
 
 [project.optional-dependencies]
 mlx = ["mlx>=0.32; sys_platform == 'darwin' and platform_machine == 'arm64'",
@@ -33,6 +42,11 @@ dev = ["pytest>=8", "pyyaml>=6"]
 
 [project.scripts]
 jul = "jul_cli.main:main"
+
+[tool.setuptools.dynamic]
+# The version has one home: jul.__version__. The release workflow reads it, and on a non-release
+# build rewrites that one line to publish a .devN to TestPyPI.
+version = {attr = "jul.__version__"}
 
 [tool.setuptools]
 package-dir = {"jul" = "lib/jul", "jul.backends" = "lib/jul/backends", "jul.lab" = "lib/jul/lab", "jul_cli" = "cli/jul_cli"}
