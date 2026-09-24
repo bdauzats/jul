@@ -29,12 +29,12 @@ pip install "jul[torch]"      # Linux / Windows / any GPU
 From a checkout, to work on jul itself: `pip install -e ".[dev]"`.
 
 Or let `jul setup` do the rest: it picks the backend (MLX on Apple Silicon, else PyTorch), installs
-it if missing, downloads MiniCPM5-2B once, and checks one real decision. Running it again redoes only
+it if missing, downloads WeMM-Embedding-4B (2.6 GB, 4-bit) once, and checks one real decision. Running it again redoes only
 the check.
 
 ```bash
 pip install jul
-jul setup                          # --backend torch, --model qwen3.5-9b, --no-install, --no-check
+jul setup                          # --backend torch, --model minicpm5-2b, --no-install, --no-check
 ```
 
 Or have a big LLM install the small one. Paste this into Claude Code, Codex, or any agent that has
@@ -42,12 +42,12 @@ a shell:
 
 ```text
 Install jul (https://pypi.org/project/jul/), a local library that answers typed questions
-with a 2B model, and check that it works on this machine.
+with a 4B model, and check that it works on this machine.
 
 1. Create a virtualenv with Python >= 3.10.
 2. In that venv: pip install jul   then   jul setup
    jul setup picks the backend (MLX on Apple Silicon, else PyTorch), installs it, downloads
-   MiniCPM5-2B (a few GB) and runs one test decision.
+   WeMM-Embedding-4B (2.6 GB, 4-bit) and runs one test decision.
 3. Then run:
    jul ask choice "Which team should handle this ticket?" -o billing:"payments, invoices" -o technical:"bugs, errors" --state "I was charged twice"
    and show me the JSON.
@@ -86,22 +86,47 @@ on the first call.
 
 | Preset        | MLX repository                                                                          | On disk | PyTorch repository                                                  |
 | ------------- | --------------------------------------------------------------------------------------- | ------: | ------------------------------------------------------------------- |
+| `wemm-4b-4bit` (default) | [`usejul/WeMM-Embedding-4B-mlx-4bit`](https://huggingface.co/usejul/WeMM-Embedding-4B-mlx-4bit) | 2.6 GB | [`tencent/WeMM-Embedding-4B`](https://huggingface.co/tencent/WeMM-Embedding-4B) |
 | `minicpm5-2b` | [`openbmb/MiniCPM5-2B-MLX`](https://huggingface.co/openbmb/MiniCPM5-2B-MLX)             |  2.7 GB | [`openbmb/MiniCPM5-2B`](https://huggingface.co/openbmb/MiniCPM5-2B) |
-| `qwen3.5-9b`  | [`mlx-community/Qwen3.5-9B-4bit`](https://huggingface.co/mlx-community/Qwen3.5-9B-4bit) |   11 GB | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) ¹       |
-| `minicpm5-2b-decision` ² | [`usejul/minicpm5-2b-decision-mlx-4bit`](https://huggingface.co/usejul/minicpm5-2b-decision-mlx-4bit) | 1.3 GB | [`usejul/minicpm5-2b-decision`](https://huggingface.co/usejul/minicpm5-2b-decision) |
+| `minicpm5-2b-decision` ¹ | [`usejul/minicpm5-2b-decision-mlx-4bit`](https://huggingface.co/usejul/minicpm5-2b-decision-mlx-4bit) | 1.3 GB | [`usejul/minicpm5-2b-decision`](https://huggingface.co/usejul/minicpm5-2b-decision) |
 
-¹ Not tested yet on PyTorch.
-² A decision model, read differently from the two presets: see [Decision models](#decision-models). It
+¹ A decision model, read differently from the presets: see [Decision models](#decision-models). It
 is not built in; add it once with `jul models add` (below).
 
 You only need the preset you actually use, and only one is ever held in memory:
 
 ```bash
-jul setup                          # minicpm5-2b
-jul setup --model qwen3.5-9b
+jul setup                          # wemm-4b-4bit
+jul setup --model minicpm5-2b
 ```
 
 `jul models` shows which ones are already downloaded.
+
+### Every model measured
+
+Jev scores 0.753 on the same benchmark. `wemm-4b-4bit` and `minicpm5-2b` are built in; any other is
+one command away,
+`jul models add <name> --repo <repository>`, which fits it on the dev sets.
+
+| Name | Repository | Memory | Jev bench, zero-shot | + autotune |
+| --- | --- | ---: | ---: | ---: |
+| `wemm-4b-4bit` | [`usejul/WeMM-Embedding-4B-mlx-4bit`](https://huggingface.co/usejul/WeMM-Embedding-4B-mlx-4bit) | 2.6 GB | 0.857 | **0.897** |
+| `wemm-4b` | [`tencent/WeMM-Embedding-4B`](https://huggingface.co/tencent/WeMM-Embedding-4B) | 4.5 GB | **0.877** | 0.862 |
+| `wemm-9b` | [`tencent/WeMM-Embedding-9B`](https://huggingface.co/tencent/WeMM-Embedding-9B) | 9.0 GB | 0.863 | 0.857 |
+| `wemm-2b` | [`hfadam/WeMM-Embedding-2B-MLX-4bit`](https://huggingface.co/hfadam/WeMM-Embedding-2B-MLX-4bit) | 1.5 GB | 0.777 | 0.805 |
+| `f2llm-8b` | converted locally, not published | 4.5 GB | 0.820 | 0.850 |
+| `f2llm-4b` | [`fcmeyer/F2LLM-v2-4B-mlx-6bit`](https://huggingface.co/fcmeyer/F2LLM-v2-4B-mlx-6bit) | 3.0 GB | 0.840 | 0.853 |
+| `f2llm-1.7b` | converted locally, not published | 1.0 GB | 0.817 | 0.833 |
+| `f2llm-0.6b` | [`fcmeyer/F2LLM-v2-0.6B-bf16-mlx`](https://huggingface.co/fcmeyer/F2LLM-v2-0.6B-bf16-mlx) | 1.1 GB | 0.623 | 0.817 |
+| `qwen3-embedding-8b` | [`mlx-community/Qwen3-Embedding-8B-4bit-DWQ`](https://huggingface.co/mlx-community/Qwen3-Embedding-8B-4bit-DWQ) | 4.0 GB | 0.773 | 0.806 |
+| `qwen3-embedding-4b` | [`mlx-community/Qwen3-Embedding-4B-4bit-DWQ`](https://huggingface.co/mlx-community/Qwen3-Embedding-4B-4bit-DWQ) | 2.1 GB | 0.733 | 0.775 |
+| `qwen3-embedding-0.6b` | [`mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ`](https://huggingface.co/mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ) | 0.32 GB | 0.637 | 0.760 |
+| `harrier-0.6b` | [`majentik/harrier-oss-v1-0.6b-MLX-4bit`](https://huggingface.co/majentik/harrier-oss-v1-0.6b-MLX-4bit) | **0.31 GB** | 0.667 | 0.814 |
+| `minicpm5-2b` | [`openbmb/MiniCPM5-2B-MLX`](https://huggingface.co/openbmb/MiniCPM5-2B-MLX) | 2.7 GB | 0.617 | 0.757 |
+| `minicpm5-2b-decision` | [`usejul/minicpm5-2b-decision-mlx-4bit`](https://huggingface.co/usejul/minicpm5-2b-decision-mlx-4bit) | 1.3 GB | 0.796 |  |
+| `ternary-bonsai-1.7b` | [`prism-ml/Ternary-Bonsai-1.7B-mlx-2bit`](https://huggingface.co/prism-ml/Ternary-Bonsai-1.7B-mlx-2bit) | 0.46 GB | 0.640 | 0.760 |
+| `ternary-bonsai-8b` | [`prism-ml/Ternary-Bonsai-8B-mlx-2bit`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-mlx-2bit) | 1.75 GB | 0.563 | 0.753 |
+| `bitnet-2b` | [`mlx-community/bitnet-b1.58-2B-4T`](https://huggingface.co/mlx-community/bitnet-b1.58-2B-4T) | 1.1 GB | 0.617 | 0.723 |
 
 ### Adding a model
 
@@ -166,7 +191,7 @@ Change the import; nothing else.
 # from typesafe_sdk import TypeSafeClient, Choice, Noul, Score
 from jul import TypeSafeClient, Choice, Noul, Score
 
-client = TypeSafeClient(model="minicpm5-2b")          # or "qwen3.5-9b"
+client = TypeSafeClient()                             # wemm-4b-4bit, or model="minicpm5-2b"
 
 response = client.system_one(
     state={"ticket": "I was charged twice for my subscription this month."},
@@ -268,10 +293,13 @@ whatever its option count, and you pay the latency in the table above. The defau
 
 ## Two presets, and a decision model
 
-| Preset                          | Model                           | Layers  |    tau | Latency (p50) | Jev bench, zero-shot |
-| ------------------------------- | ------------------------------- | ------- | -----: | ------------: | -------------------- |
-| `minicpm5-2b` (alias `fast`)    | `openbmb/MiniCPM5-2B-MLX`       | 39 / 40 | 0.0413 |     **64 ms** | 0.617                |
-| `qwen3.5-9b` (alias `accurate`) | `mlx-community/Qwen3.5-9B-4bit` | 31 / 31 | 0.0483 |        273 ms | 0.660                |
+| Preset                          | Model                               | Layers  |    tau | p50, M4 Pro | p50, M5 Max | Jev bench, zero-shot |
+| ------------------------------- | ----------------------------------- | ------- | -----: | ----------: | ----------: | -------------------- |
+| `wemm-4b-4bit` (alias `accurate`, default) | `usejul/WeMM-Embedding-4B-mlx-4bit` | 31 / 31 | 0.0553 |      146 ms |       55 ms | **0.857**            |
+| `minicpm5-2b` (alias `fast`)    | `openbmb/MiniCPM5-2B-MLX`           | 39 / 40 | 0.0413 |   **62 ms** |             | 0.617                |
+
+`wemm-4b-4bit` is the default because it is the most accurate: 10 points above Jev with no training.
+On the same M4 Pro it is 2.4 times slower than `minicpm5-2b`, which stays the fast option.
 
 A third option does not read a general model at all: `minicpm5-2b-decision` is MiniCPM5-2B *trained*
 to answer typed questions (a merged LoRA and a pointer head). It has no layer and no tau — it brings
@@ -280,40 +308,52 @@ many options a question has. It is not built in: `jul models add` registers it i
 
 ## Results
 
-The full published benchmark, 300 examples, run through this library (`scripts/bench_jul.py`, and
-`bench_jul_decision.py` for the decision model). **Only the zero-shot block compares to Jev** — the
-rows below it receive task data at call time and Jev receives none.
+Jev's published benchmark, 300 examples, every row read through this library
+(`scripts/bench_jul.py`). **Only the zero-shot table compares to Jev**: the second one receives task
+data at call time, and Jev receives none.
 
-| Zero-shot                      |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |       p50 |
-| ------------------------------ | -------: | --------: | -------: | --------: | --------: | --------: |
-| WeMM-Embedding-4B, MLX 4-bit ² |     0.84 |  **0.90** | **0.78** | **0.840** |     0.111 | **96 ms** |
-| jul `minicpm5-2b-decision` ¹   | **0.91** |      0.79 |     0.69 |     0.796 |     0.133 |    217 ms |
-| Jev (published)                | **0.91** |      0.87 |     0.48 |     0.753 |     0.156 |    246 ms |
-| jul `qwen3.5-9b`               |     0.79 |      0.74 |     0.45 |     0.660 |     0.175 |    273 ms |
-| jul `minicpm5-2b`              |     0.80 |      0.59 |     0.46 |     0.617 | **0.113** | **64 ms** |
-| GLiNER2.5 (published)          |     0.70 |      0.61 |     0.44 |     0.583 |     0.101 |    128 ms |
+| Zero-shot                      |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |       p50 |  Memory |
+| ------------------------------ | -------: | --------: | -------: | --------: | --------: | --------: | ------: |
+| jul `wemm-4b`                  |     0.95 |  **0.88** |     0.80 | **0.877** |     0.112 |     78 ms |  4.5 GB |
+| jul `wemm-9b`                  | **0.97** |      0.84 |     0.78 |     0.863 |     0.114 |    138 ms |  9.0 GB |
+| jul `wemm-4b-4bit`             |     0.90 |      0.87 |     0.80 |     0.857 |     0.084 |     55 ms |  2.6 GB |
+| jul `f2llm-4b`                 |     0.89 |      0.82 |     0.81 |     0.840 |     0.090 |     46 ms |  3.0 GB |
+| jul `f2llm-1.7b`               |     0.91 |      0.67 | **0.87** |     0.817 | **0.082** | **24 ms** |  1.0 GB |
+| jul `minicpm5-2b-decision` ¹   |     0.91 |      0.79 |     0.69 |     0.796 |     0.133 |    217 ms |         |
+| **Jev (published)**            |     0.91 |      0.87 |     0.48 |     0.753 |     0.156 |    246 ms |  hosted |
+| jul `minicpm5-2b`              |     0.80 |      0.59 |     0.46 |     0.617 |     0.113 |     64 ms |  2.7 GB |
+| GLiNER2.5 (published)          |     0.70 |      0.61 |     0.44 |     0.583 |     0.101 |    128 ms |         |
 
-Zero-shot means no example of the task at call time: every row here gets the text, the question and the
-option list, nothing else. The first row is an embedding model, the next two are models *trained* to
-decide, then two general LLMs read without training, and GLiNER is a trained zero-shot tagger.
+- **Nine `jul` models beat Jev zero-shot, the best by 12.4 points** (`wemm-4b`, 0.877 against
+  0.753). `wemm-4b-4bit` is still 10 points ahead in 2.6 GB at 55 ms, and `f2llm-1.7b` 6 points ahead
+  in 1 GB at 24 ms, ten times faster than Jev.
+- **Better calibrated too**: the five leaders sit between 0.082 and 0.114 of ECE, Jev at 0.156.
+- **AG News is the clean comparison.** Banking77 and Emotion are in MTEB, which embedding models train
+  on, so `wemm-*` and `f2llm-*` have probably seen them. AG News is not, and there `wemm-9b` scores
+  0.97 against Jev's 0.91.
 
-¹ Measured on **v1.0**; the benchmark has not been read again for v1.1. `minicpm5-2b-decision` learned
-these three tasks during training, on their training splits (the
-benchmark rows come from the test splits). Jev's training data is not published, so whether it saw them
-too is unknown. On six sources neither it nor Kev ever trained on, it scores 0.721 against Jev's 0.857:
-see [the development sets](#the-decision-model-on-the-development-sets).
+| With task data (not comparable to Jev)        |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |       p50 |
+| --------------------------------------------- | -------: | --------: | -------: | --------: | --------: | --------: |
+| `wemm-4b-4bit` + autotune (1000 labeled)      |     0.94 |  **0.94** |     0.81 | **0.897** | **0.067** |     59 ms |
+| `f2llm-1.7b` + autotune (1000 labeled)        |     0.89 |      0.72 | **0.89** |     0.833 |           |     24 ms |
+| `harrier-0.6b` + autotune (1000 labeled)      |     0.91 |      0.71 |     0.83 |     0.814 |           | **13 ms** |
+| `minicpm5-2b` + autotune (1000 labeled)       |     0.92 |      0.76 |     0.59 |     0.757 |     0.102 |     38 ms |
+| `minicpm5-2b` + context (50 unlabeled)        |     0.84 |      0.62 |     0.47 |     0.643 |     0.140 |     44 ms |
 
-² Not a `jul` model yet: an embedding model, measured by its own script on the same 300 rows with the
-same metrics. Banking77 and Emotion belong to MTEB, which embedding models train on, so it has probably
-seen both; on AG News, which it has not, it is 7 points behind Jev. See
-[An embedding model: WeMM-Embedding-4B](#an-embedding-model-wemm-embedding-4b).
+With a thousand labels, `wemm-4b-4bit` reaches **0.897** and 0.94 on Banking77, and `harrier-0.6b`
+passes Jev in 0.31 GB at 13 ms.
 
-| With task data (not comparable)        |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |       p50 |
-| -------------------------------------- | -------: | --------: | -------: | --------: | --------: | --------: |
-| `qwen3.5-9b` + head (1000 labeled)     | **0.94** |      0.79 | **0.58** | **0.770** | **0.077** |    221 ms |
-| `minicpm5-2b` + head (1000 labeled)    |     0.92 |      0.77 |     0.58 |     0.757 |     0.119 | **65 ms** |
-| `qwen3.5-9b` + context (50 unlabeled)  |     0.91 |      0.78 |     0.55 |     0.747 |     0.096 |    242 ms |
-| `minicpm5-2b` + context (50 unlabeled) |     0.84 |      0.63 |     0.47 |     0.647 |     0.140 |     65 ms |
+¹ Trained on these three tasks' training splits (the benchmark rows come from the test splits); Jev's
+training data is not published. On six sources neither ever trained on, Jev leads, 0.857 against
+0.721: see [the development sets](#the-decision-model-on-the-development-sets). Measured on v1.0.
+
+On anything that reads two things together (a paraphrase, a policy against a case), an embedding
+model falls behind the decision model: see [Embedding models](#embedding-models).
+
+Seventeen models were read on these same 300 rows; this table keeps the leaders and the presets. 100 rows per dataset means ±5 points per cell and ±3 on the mean. Every layer
+and temperature was fitted on development sets the benchmark never uses. Latencies are p50: `wemm-*`, `f2llm-*` and the tuned rows on an M5 Max, `minicpm5-2b`
+and the decision model on an M4 Pro, where `wemm-4b-4bit` takes 146 ms. Jev's includes
+the network.
 
 ### The baseline worth remembering
 
@@ -324,28 +364,9 @@ the same 1000 labeled examples, with no LLM at all (`scripts/bench_tfidf.py`):
 |---|---:|---:|---:|---:|---:|---:|
 | TF-IDF + linear SVM | 0.88 | 0.76 | 0.43 | **0.690** | **0.17 ms** | 0.1 s on CPU |
 
-It is 6.3 points behind Jev at roughly **1400× lower latency**, and it beats the zero-shot LLM
-outright. It loses on one dataset only — Emotion, where recognising a feeling needs meaning rather
-than vocabulary. That is exactly, and only, where the model earns its keep.
-
-If you have labels and your task looks like topic or intent sorting, try this first. It takes a
-minute and it may be the end of the story.
-
-Read honestly:
-
-- **The decision model passes Jev on the mean (0.796 against 0.753)**, and it is the only row here
-  trained for this job, like Jev. See footnote ¹ before reading it as a like-for-like win.
-- **Read without training, jul beats GLiNER and stays 9 points behind Jev.** Almost all of that gap is
-  Banking77 and its 72 fine-grained intents (0.74 vs 0.87); on AG News and Emotion the gap is 2 to 12
-  points.
-- **jul is better calibrated than Jev** nearly everywhere. On Emotion Jev's ECE is 0.351: more often
-  right, but badly overconfident.
-- **With 1000 labeled examples, the small model is enough**: MiniCPM reaches 0.757 at 65 ms, Jev's
-  level for a quarter of its latency, and within 1.3 points of tuned Qwen which costs 3.4× more.
-- 100 rows per dataset, so ±5 points per cell and ±3 on the mean.
-
-Every layer and temperature was fitted on dev datasets the Jev benchmark never uses. Models load on
-first use, one at a time (Qwen3.5-9B is about 5.5 GB).
+It is 6.3 points behind Jev at roughly **1400× lower latency**. It loses clearly on Emotion only,
+where recognising a feeling needs meaning rather than vocabulary. If you have labels and your task
+looks like topic or intent sorting, try it first: it takes a minute.
 
 ### The decision model, on the development sets
 
@@ -395,15 +416,23 @@ Its row sits in the table above, measured on the same 300 rows with the same met
   seventy-two cost 431 ms. Caching them would need the format to put the options before the text, which
   means retraining.
 
-### An embedding model: WeMM-Embedding-4B
+### Embedding models
 
-[`tencent/WeMM-Embedding-4B`](https://huggingface.co/tencent/WeMM-Embedding-4B) is Tencent's
-multimodal embedding model, built on Qwen3.5-4B and released under Apache-2.0. It is not an LLM read
-from the inside like the presets above: it was trained to turn a text into one vector, so the text and
-each option are embedded separately and compared by cosine — the same idea as `jul`'s vector reading,
-done by a model built for it. We converted it to MLX, 4-bit and text only:
-[`usejul/WeMM-Embedding-4B-mlx-4bit`](https://huggingface.co/usejul/WeMM-Embedding-4B-mlx-4bit)
-(2.6 GB, same accuracy as the bf16 original). It is not wired into `jul` yet.
+WeMM-Embedding (Tencent), F2LLM-v2 (CodeFuse-AI), Qwen3-Embedding (Alibaba) and Harrier-OSS
+(Microsoft) are ordinary decoder-only LLMs, fine-tuned by contrastive learning to put texts with the
+same meaning close together. `jul` reads them like any other model, with no code of its own, and
+`wemm-4b-4bit` is the default preset. For the others,
+`jul models add` finds their layers, center and tau on the dev sets. They are the top of the table
+above.
+
+```bash
+jul models add wemm-4b      --repo tencent/WeMM-Embedding-4B               # 4.5 GB, the zero-shot best
+jul models add f2llm-4b     --repo fcmeyer/F2LLM-v2-4B-mlx-6bit            # 3.0 GB, 46 ms
+jul models add harrier-0.6b --repo majentik/harrier-oss-v1-0.6b-MLX-4bit   # 0.31 GB, 13 ms
+```
+
+The measurements below come from an earlier run of WeMM-Embedding-4B as a plain embedding (pooled at
+its `<embedding>` token, by its own script), on the development sets and on Kev's decision questions.
 
 **Who it is for: anyone sorting one text into labels described in words, with no labeled data.**
 Ticket routing, topics, intents, sentiment, emotions. On the development sets it beats everything
@@ -443,7 +472,7 @@ tickets = Context(
     examples=open("sample_tickets.txt").read().splitlines(),   # ~50–200 real texts, no labels
 )
 
-client = TypeSafeClient(model="qwen3.5-9b", context=tickets)   # for every call
+client = TypeSafeClient(context=tickets)                       # for every call
 client.system_one(state, questions, context=tickets)           # or per call
 ```
 
@@ -452,17 +481,16 @@ client.system_one(state, questions, context=tickets)           # or per call
 | `description` | prepended as `Context: …` to both formulations   | nil (sits in the cached prefix) | **off by default, measured harmful on average** — `use_description=True` to try it                            |
 | `examples`    | their mean vector becomes the center of the task | computed once                   | measured: helps on topics (AG News 0.66 → 0.75), slightly hurts on fine-grained tasks (Banking77 0.55 → 0.53) |
 
-A task center is the best center measured for both presets (JOURNAL §9 octies), which is the main
+A task center is the best center measured (JOURNAL §9 octies), which is the main
 reason to bother with a context at all. **Ten examples already capture most of the gain, fifty is the
 sweet spot, two hundred adds nothing** (JOURNAL §9 decies). Below ten the center is noise and can be
 worse than no context at all — with 5 examples, a ticket rated `billing` at 0.98 flipped to a wrong
 `technical`. `Context` warns under ten.
 
-The gain is uneven: Yahoo Answers topics jumped 0.480 → 0.600 with Qwen and ten examples, while
-financial sentences lost 3 points. A task center helps most when your texts have a style of their own.
+The gain is uneven: topics gain the most, while financial sentences lost 3 points. A task center helps most when your texts have a style of their own.
 
-**The `description` is off by default.** Measured on both presets over four datasets, it failed the
-plan's bar: MiniCPM gained 1.3 points on average with one dataset losing 4, and Qwen lost on all four
+**The `description` is off by default.** Measured over four datasets, it failed the plan's bar:
+MiniCPM gained 1.3 points on average with one dataset losing 4, and a 9B model lost on all four
 (−5.2 on average). Worse, the sign flips between models on the same data. Switch it on with
 `use_description=True` only if you measure a gain on your own.
 | `labeled` | fits a temperature and a per-option bias | computed once | proven, but makes any comparison with Jev unfair |
@@ -513,11 +541,9 @@ is plenty for 4 options and not enough for Banking77's 72. Measured gains at 100
 |             | AG News       | Emotion       | Banking77     |
 | ----------- | ------------- | ------------- | ------------- |
 | MiniCPM5-2B | 0.770 → 0.870 | 0.480 → 0.630 | 0.555 → 0.695 |
-| Qwen3.5-9B  | 0.745 → 0.875 | 0.505 → 0.570 | 0.715 → 0.830 |
 
-**Qwen benefits more, and sooner** — +9 points from 24 examples on AG News, its plateau by 100, where
-MiniCPM needs 500 to 1000. The bigger model's vectors are more separable, so a linear probe learns
-from fewer examples.
+MiniCPM needs 500 to 1000 examples to plateau. A model with more separable vectors learns from
+fewer: on the Jev bench, `wemm-4b-4bit` goes from 0.857 to 0.897 with 1000.
 
 A head only knows the options it saw, and only the preset whose vectors it saw: change either and you
 call `autotune(...)` again.
@@ -528,7 +554,7 @@ Writes a synthetic labeled dataset from a few real examples, in the format `auto
 writes the data: tuning stays a separate step.
 
 ```bash
-jul synth questions.yaml --seeds sample.jsonl --per-option 30 --output synth.jsonl   # writer: qwen3.5-9b
+jul synth questions.yaml --seeds sample.jsonl --per-option 30 --output synth.jsonl --writer <mlx-lm repo>
 jul autotune tickets --questions questions.yaml --labeled synth.jsonl
 ```
 
@@ -594,60 +620,27 @@ Not yet measured — do not rely on these without checking:
   bias** — they rank well (AUC 0.87–0.99) and decide badly. Fix it with `client.autotune(...)` on a
   few dozen labeled examples. `method="letters"` keeps the old reading.
 - **Centering**: measured (JOURNAL §9 octies). Not centering costs 4.5–8.5 points, so always centre.
-  Which centre matters less, and differently per model: on Qwen the three are tied, on MiniCPM the
-  generic centre gains 4 points over the option mean. **The best centre is the task's own**, i.e.
+  Which centre matters less, and differently per model: on MiniCPM the generic centre gains 4 points
+  over the option mean. **The best centre is the task's own**, i.e.
   `Context(examples=…)`, for both models — 200 examples per strategy though, so ±3.5 points.
 - Everything was tuned in English.
 
 ## Next steps
 
-### Images and video, with Qwen
+### Routing by question type
 
-`qwen3.5-9b` is a multimodal checkpoint. Its config declares a vision tower of 27 blocks, an
-`image_token_id` and a `video_token_id` — and the weights are already on your disk: **333
-`vision_tower.*` tensors**, part of the 11 GB the preset downloads. They are never loaded.
-`mlx_lm.load()` instantiates the language model alone (`children()` returns `['language_model']`),
-which is exactly why `backbone.py` reaches through the multimodal wrapper to find the text model.
-
-The method should transpose. The state vector and the option vectors meet in the same residual
-stream, at the same position, so the cosine stays defined whether the state arrived as text or as
-pixels — the trick CLIP plays across two aligned encoders, except here the model does the fusion
-itself and the options stay plain text.
-
-What it would take:
-
-- load through `mlx-vlm` rather than `mlx-lm`, to instantiate the vision tower and the processor;
-- **measure everything again**: an image-conditioned hidden state has a different distribution, so the
-  center, `tau` and most likely the layer all have to be refitted;
-- rewrite the formulations — `This text: "…" means in one word:` is absurd in front of a photograph;
-- accept the latency. One image is hundreds of visual tokens on top of 27 tower blocks. Still a
-  single pass with nothing generated, but the "four times faster than the hosted option" argument
-  would not survive it.
-
-The prefix cache does survive: the prefix stays text and the image takes the state's place.
-
-`minicpm5-2b` is out of this — `model_type: llama`, no vision config, no image preprocessor.
-
-And the honest question is the same one as for text: a small vision model trained on your own images
-would probably do as well for a fraction of the cost. ResNet plus a logistic regression has been the
-image equivalent of TF-IDF for a decade, and it deserves the same benchmark row before anything else
-is built.
-
-### WeMM-Embedding-4B as a `jul` model
-
-Measured, not wired in (see [the section above](#an-embedding-model-wemm-embedding-4b)). The natural
-shape is routing by question type: a `Choice` over a single text goes to WeMM, anything that reads two
-things together goes to `minicpm5-2b-decision`. It needs its own reading (pooling at the
-`<embedding>` token, no center, no layer to choose), its temperature in the preset, and `Noul` and
-`Score` measured — only `Choice` is so far.
+Embedding models lead on sorting one text into labels; the decision model leads on questions that read
+two things together. The natural shape is to route by question type: a `Choice` over a single text to
+`wemm-4b-4bit`, the rest to `minicpm5-2b-decision`. `Noul` and `Score` still have to be measured on the
+embedding models — only `Choice` is so far.
 
 ### Smaller leads, already measured
 
 - **A generic center for the `question + options` formulation.** Worth about 2.5 points on MiniCPM
   (0.560 against 0.535), but it depends on the question, so it costs 195 extra passes every time a
   new question appears. Left off: a `Context` with fifty examples is cheaper and scores better.
-- **Banking77, zero-shot.** This is where the whole gap with the hosted option sits: 0.74 against
-  0.87, on 72 fine-grained intents. `autotune(...)` closes most of it; nothing else has.
+- **Banking77 on MiniCPM.** Read zero-shot, `minicpm5-2b` stays at 0.59 against Jev's 0.87 on 72
+  fine-grained intents. `wemm-4b` closes it (0.88), and `autotune(...)` closes most of it.
 - **One batch instead of two passes.** The two formulations run one after the other. Batching them
   should cut latency without touching a single accuracy figure.
 - **English only.** Every layer, temperature and center here was fitted on English text.
@@ -678,15 +671,15 @@ jul/
 ## Tests
 
 ```bash
-pytest tests                       # 86 tests, under a second, no model and no data
-JUL_SLOW=1 pytest tests            # all 112, downloads and loads both presets (~2 min)
-JUL_SLOW=1 pytest tests -m slow    # only the 26 that need a model
+pytest tests                       # 94 tests, a few seconds, no model and no data
+JUL_SLOW=1 pytest tests            # all 127, downloads and loads the presets
+JUL_SLOW=1 pytest tests -m slow    # only the 33 that need a model
 JUL_SLOW=1 pytest tests -m torch   # MLX against PyTorch on the same weights
 ```
 
 **`JUL_SLOW` is a test-only switch**, read by `tests/conftest.py` and by nothing in the library. The
-22 tests marked `@pytest.mark.slow` load a real model, so a plain `pytest` skips them rather than
-pulling 13 GB of weights on someone who just cloned the repo. They are reported as skipped, with the
+33 tests marked `@pytest.mark.slow` load a real model, so a plain `pytest` skips them rather than
+pulling over 15 GB of weights on someone who just cloned the repo. They are reported as skipped, with the
 reason, never silently dropped. Set `JUL_SLOW=1` to run them.
 
 The slow suite includes a per-preset non-regression check against `tests/fixtures/baseline.json`,
@@ -695,7 +688,7 @@ which ships with the repo — that one needs the models but no dataset download.
 ## Reproducing the measurements
 
 Every number in this README comes from a script in `scripts/`. None of the data is committed; these
-steps fetch it. Expect around 2 hours end to end on an M-series Mac, most of it Qwen.
+steps fetch it. Durations are given per command where measured.
 
 ```bash
 pip install -e ".[repro]"
@@ -717,11 +710,8 @@ Then the experiments, in order. Each writes to `runs/` and prints its table:
 ```bash
 python scripts/dev_fit_tau.py minicpm5-2b 39 40 50     # temperatures          (~4 min)
 python scripts/dev_generic_center.py minicpm5-2b       # centering             (~4 min)
-python scripts/dev_generic_center.py qwen3.5-9b        #                       (~10 min)
 python scripts/dev_context_effect.py minicpm5-2b 100   # does a Context help?  (~7 min)
-python scripts/dev_context_effect.py qwen3.5-9b 100    #                       (~25 min)
 python scripts/dev_tuning_curve.py minicpm5-2b         # how many labels?      (~5 min)
-python scripts/dev_tuning_curve.py qwen3.5-9b          #                       (~17 min)
 ```
 
 `dev_generic_center.py` rewrites the shipped centers in `lib/jul/assets/`, and `dev_tuning_curve.py`
@@ -732,7 +722,7 @@ training row appears in it, then runs the three variants **through the public AP
 
 ```bash
 python scripts/bench_jul.py minicpm5-2b                # (~7 min)
-python scripts/bench_jul.py qwen3.5-9b                 # (~25 min)
+python scripts/bench_jul.py wemm-4b-4bit
 python scripts/bench_tfidf.py                          # the no-LLM baseline (~5 s)
 ```
 

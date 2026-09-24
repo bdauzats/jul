@@ -4,20 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>JuL — Juste un LLM</title>
-<meta name="description" content="Typed decisions from a local LLM. Calibrated probabilities in 64 ms, on your own machine. No API, no tokens generated.">
+<meta name="description" content="Typed decisions from a local LLM. Calibrated probabilities in 55 ms, on your own machine, ahead of Jev on its own benchmark. No API, no tokens generated.">
 <meta property="og:title" content="JuL — Juste un LLM">
-<meta property="og:description" content="Typed decisions from a local LLM. 64 ms. 1.3 GB. Zero tokens generated. Zero bytes sent.">
-<meta name="theme-color" content="#050805">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23050805'/%3E%3Ctext x='2' y='12' font-family='monospace' font-size='11' fill='%2333ff66'%3E%3E_%3C/text%3E%3C/svg%3E">
+<meta property="og:description" content="Typed decisions from a local LLM. Ahead of Jev. 55 ms. 2.6 GB. Zero tokens generated. Zero bytes sent.">
+<meta name="theme-color" content="#0a0600">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%230a0600'/%3E%3Ctext x='2' y='12' font-family='monospace' font-size='11' fill='%23ffb000'%3E%3E_%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=VT323&display=swap" rel="stylesheet">
 <style>
 :root {
-  --ph: #33ff66;          /* phosphor */
-  --ph-rgb: 51, 255, 102;
-  --bg: #050805;
-  --ink: #050805;         /* text on inverted phosphor */
+  --ph: #ffb000;          /* phosphor: amber by default */
+  --ph-rgb: 255, 176, 0;
+  --bg: #0a0600;
+  --ink: #0a0600;         /* text on inverted phosphor */
   --dim: rgba(var(--ph-rgb), .55);
   --faint: rgba(var(--ph-rgb), .16);
   --glow: rgba(var(--ph-rgb), .55);
@@ -25,7 +25,7 @@
   --crt: "VT323", var(--mono);
   --fs: 15px;
 }
-:root[data-phosphor="amber"] { --ph: #ffb000; --ph-rgb: 255, 176, 0; --bg: #0a0600; --ink: #0a0600; }
+:root[data-phosphor="green"] { --ph: #33ff66; --ph-rgb: 51, 255, 102; --bg: #050805; --ink: #050805; }
 :root[data-phosphor="white"] { --ph: #e8f0ff; --ph-rgb: 232, 240, 255; --bg: #07080b; --ink: #07080b; }
 
 * { box-sizing: border-box; }
@@ -152,6 +152,40 @@ ul.dos li { display: grid; grid-template-columns: 3ch 1fr; }
 ul.dos li::before { content: "»"; }
 ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shadow: none; padding: 0 .4ch; }
 .note { color: var(--dim); margin-top: 1em; }
+.bench { border-collapse: collapse; width: 100%; min-width: 64ch; font-variant-numeric: tabular-nums; }
+.bench th, .bench td { padding: .15em 1ch; text-align: right; white-space: nowrap; font-weight: 400; }
+.bench th:first-child { text-align: left; padding-left: 0; }
+.bench thead th { border-bottom: 1px solid var(--dim); color: var(--dim); }
+.bench thead button { color: inherit; }
+.bench thead th[aria-sort] { color: var(--ph); }
+.bench thead th[aria-sort="descending"] button::after { content: " ▼"; }
+.bench thead th[aria-sort="ascending"] button::after { content: " ▲"; }
+.bench tbody tr:hover { background: var(--faint); }
+.bench tr.jev { color: var(--dim); }
+.bench td.best { background: var(--ph); color: var(--ink); text-shadow: none; }
+.vs-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4em 3ch; }
+.vs-head .eyebrow { flex: 1 1 100%; }
+.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.4em 4ch; margin-top: 1.2em; }
+@media (max-width: 760px) { .kpis { grid-template-columns: 1fr; } }
+.kpi .big { font-family: var(--crt); font-size: clamp(3rem, 6vw, 4.6rem); line-height: .9; margin-top: .15em; }
+.kpi .big small { font-size: .45em; margin-left: .3ch; }
+.kpi .delta { margin-top: .4em; min-height: 1.5em; }
+.kpi .delta.win { display: inline-block; background: var(--ph); color: var(--ink); text-shadow: none; padding: 0 .5ch; }
+.kpi .delta.lose, .kpi .delta.even { color: var(--dim); }
+.minibars { margin-top: .6em; line-height: 1.35; overflow: hidden; }
+.minibars .jev { color: var(--dim); }
+.vs-foot { margin-top: 1.4em; padding-top: .8em; border-top: 1px dashed var(--dim); }
+.chart-bar { display: flex; flex-wrap: wrap; gap: .3em 1ch; margin-bottom: .4em; }
+.chart-bar button { color: var(--dim); }
+.chart-bar button[aria-pressed="true"] { background: var(--ph); color: var(--ink); text-shadow: none; }
+.chart-bar button:hover, .chart-bar button:focus-visible { background: none; color: var(--ph); text-shadow: 0 0 3px var(--glow); outline: 1px dashed var(--ph); }
+.chart-bar button[aria-pressed="true"]:hover, .chart-bar button[aria-pressed="true"]:focus-visible { background: var(--ph); color: var(--ink); text-shadow: none; }
+.chart { margin-top: .8em; line-height: 1.35; }
+.chart button { display: block; width: 100%; text-align: left; white-space: pre; }
+.chart button:hover, .chart button:focus-visible, .chart button.on { background: var(--ph); color: var(--ink); text-shadow: none; outline: none; }
+.chart .jev { color: var(--dim); }
+.chart .axis { color: var(--dim); white-space: pre; }
+.chart-info { margin-top: .6em; min-height: 2.7em; white-space: pre-wrap; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 1em 3ch; }
 @media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
 
@@ -223,7 +257,7 @@ ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shad
   ───────────────────────────────
   +30 LIVES ............... OK
   output_tokens ........... still 0
-  latency ................. still 64 ms
+  latency ................. still 55 ms
                             (we checked)
   UNLOCKED ................ PHOSPHOR:RGB
 
@@ -239,7 +273,7 @@ ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shad
   <a href="https://github.com/usejul/jul"><u>G</u>itHub</a>
   <span class="spacer"></span>
   <button id="keys" type="button" title="Keyboard shortcuts" aria-haspopup="dialog">[?] Keys</button>
-  <button id="phosphor" type="button" title="Change phosphor">PHOSPHOR:<span id="ph-name">GRN</span></button>
+  <button id="phosphor" type="button" title="Change phosphor">PHOSPHOR:<span id="ph-name">AMB</span></button>
   <span class="hide-sm" id="clock" aria-hidden="true">00:00:00</span>
 </nav>
 
@@ -259,7 +293,7 @@ ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shad
         <h1>Decisions, not chat.<br>On your machine.</h1>
         <p class="tag">
           Ask a typed question, get a <b>calibrated probability per option</b>.
-          A 2B model read once, stopped one step before its first word:
+          A 4B model read once, stopped one step before its first word:
           no API, no tokens generated, no data leaving the box.
           Same calls as Jev's SDK: change one import.
         </p>
@@ -269,34 +303,47 @@ ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shad
           <a href="#bench">[ NUMBERS ]</a>
         </div>
       </div>
-      <p class="hero-foot">It has nothing to say, and it says it in 64 milliseconds.<span class="blink">_</span></p>
+      <p class="hero-foot">It has nothing to say, and it says it in 55 milliseconds.<span class="blink">_</span></p>
     </div>
   </section>
 
   <!-- ── STATS ──────────────────────────────────────────────── -->
-  <section class="win c3 stat" data-title="LATENCY.EXE">
-    <p class="big">64<small>ms</small></p>
-    <p class="what">per decision, p50</p>
-    <p class="meter">[███░░░░░░░░░░░]</p>
-    <p class="dim">MiniCPM5-2B on an M4 Pro. Put it in a hot path.</p>
-  </section>
-  <section class="win c3 stat" data-title="WEIGHT.SYS">
-    <p class="big">1.3<small>GB</small></p>
-    <p class="what">on disk, 4-bit</p>
-    <p class="meter">[██░░░░░░░░░░░░]</p>
-    <p class="dim">2B parameters. Fits beside your IDE, your browser and your 400 tabs.</p>
-  </section>
-  <section class="win c3 stat" data-title="TOKENS.OUT">
-    <p class="big">0</p>
-    <p class="what">tokens generated</p>
-    <p class="meter">[░░░░░░░░░░░░░░]</p>
-    <p class="dim">The answer is read from the model's hidden state. Nothing to sample, nothing to parse.</p>
-  </section>
-  <section class="win c3 stat" data-title="NETWORK.DRV">
-    <p class="big">0<small>bytes</small></p>
-    <p class="what">sent anywhere</p>
-    <p class="meter">[░░░░░░░░░░░░░░]</p>
-    <p class="dim">Works offline, on a plane, behind any firewall. No key, no quota, no bill per call.</p>
+  <section class="win c12" data-title="VS_JEV.EXE" id="vs">
+    <div class="vs-head">
+      <p class="eyebrow">YOUR MACHINE VS JEV'S API · JEV'S OWN BENCHMARK</p>
+      <div class="chart-bar vs-models" role="group" aria-label="Model">
+        <button type="button" data-vs-model="wemm-4b-4bit" aria-pressed="true">[ WEMM-4B-4BIT ]</button>
+        <button type="button" data-vs-model="f2llm-1.7b" aria-pressed="false">[ F2LLM-1.7B ]</button>
+        <button type="button" data-vs-model="harrier-0.6b" aria-pressed="false">[ HARRIER-0.6B ]</button>
+        <button type="button" data-vs-model="minicpm5-2b" aria-pressed="false">[ MINICPM5-2B ]</button>
+      </div>
+      <div class="chart-bar" role="group" aria-label="Setting">
+        <button type="button" data-vs-mode="zs" aria-pressed="true">[ ZERO-SHOT ]</button>
+        <button type="button" data-vs-mode="tuned" aria-pressed="false">[ +AUTOTUNE ]</button>
+      </div>
+    </div>
+    <div class="kpis" aria-live="polite">
+      <div class="kpi">
+        <p class="eyebrow">ACCURACY · <span id="kpi-mode">ZERO-SHOT</span></p>
+        <p class="big"><span id="kpi-acc">85.7</span><small>%</small></p>
+        <p class="delta" id="kpi-acc-d"></p>
+        <pre class="minibars" id="kpi-acc-b"></pre>
+      </div>
+      <div class="kpi">
+        <p class="eyebrow">LATENCY · P50</p>
+        <p class="big"><span id="kpi-ms">55</span><small>ms</small></p>
+        <p class="delta" id="kpi-ms-d"></p>
+        <pre class="minibars" id="kpi-ms-b"></pre>
+      </div>
+      <div class="kpi">
+        <p class="eyebrow">MEMORY · 4-BIT</p>
+        <p class="big"><span id="kpi-gb">2.6</span><small>GB</small></p>
+        <p class="delta" id="kpi-gb-d"></p>
+        <pre class="minibars" id="kpi-gb-b"></pre>
+      </div>
+    </div>
+    <p class="vs-foot">0 tokens generated · 0 bytes sent · no key · $0 per call. <span class="dim">Jev: every text goes to an API.</span></p>
+    <p class="note" id="kpi-note"></p>
   </section>
 
   <!-- ── TERMINAL DEMO ──────────────────────────────────────── -->
@@ -308,19 +355,22 @@ ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shad
     </div>
   </section>
 
-  <!-- ── LATENCY CHART ──────────────────────────────────────── -->
-  <section class="win c5" data-title="LATENCY.CHT">
-    <p class="eyebrow">P50 PER DECISION, JEV BENCH</p>
-    <h2 class="h">Faster than a round trip.</h2>
-<pre class="scroll" aria-label="Latency chart: jul 2B 64 ms, WeMM-4B 96 ms, GLiNER2.5 128 ms, jul 2B decision 217 ms, Jev hosted 246 ms, jul 9B 273 ms">jul 2B        █████                 64 ms
-WeMM-4B ²     ███████               96 ms
-GLiNER2.5     █████████            128 ms
-jul 2B-dec.   ████████████████     217 ms
-Jev (hosted)  ██████████████████   246 ms
-jul 9B        ████████████████████ 273 ms
-              ├────┼────┼────┼────┤
-              0   70  140  210  280</pre>
-    <p class="note">jul on an M4 Pro, 24 GB, mains power. Jev is an API: its figure includes the network. GLiNER on CPU. ² WeMM: measured, coming to jul. Your hardware will differ, and it will still be your hardware.</p>
+  <!-- ── BENCH CHART ────────────────────────────────────────── -->
+  <section class="win c5" data-title="BENCH.CHT" id="chart">
+    <p class="eyebrow">JEV BENCH · 300 EXAMPLES</p>
+    <h2 class="h" id="chart-title">Ahead of Jev.</h2>
+    <div class="chart-bar" role="group" aria-label="Metric">
+      <button type="button" data-metric="acc" aria-pressed="true">[ ACCURACY ]</button>
+      <button type="button" data-metric="ms" aria-pressed="false">[ LATENCY ]</button>
+      <button type="button" data-metric="gb" aria-pressed="false">[ MEMORY ]</button>
+    </div>
+    <div class="chart-bar" role="group" aria-label="Setting">
+      <button type="button" data-mode="zs" aria-pressed="true">[ ZERO-SHOT ]</button>
+      <button type="button" data-mode="tuned" aria-pressed="false">[ +AUTOTUNE ]</button>
+    </div>
+    <div class="chart scroll" id="chart-rows" role="list"></div>
+    <p class="chart-info" id="chart-info" aria-live="polite"></p>
+    <p class="note" id="chart-note"></p>
   </section>
 
   <!-- ── HOW ────────────────────────────────────────────────── -->
@@ -328,11 +378,11 @@ jul 9B        ████████████████████ 273 m
     <p class="eyebrow">HOW IT ANSWERS</p>
     <h2 class="h">Read the mind, skip the mouth.</h2>
     <div class="two">
-<pre class="scroll" aria-label="Diagram: the state goes through MiniCPM5-2B up to layer 39, its hidden state is compared by cosine to cached option vectors, then softmax gives calibrated probabilities">STATE "I was charged twice"
+<pre class="scroll" aria-label="Diagram: the state goes through WeMM-4B up to layer 31, its hidden state is compared by cosine to cached option vectors, then softmax gives calibrated probabilities">STATE "I was charged twice"
                │
 ┌──────────────┴──────────────┐
-│ MiniCPM5-2B   (your laptop) │
-│ layers 1 → 39, then stop.   │
+│ WeMM-4B 4-bit (your laptop) │
+│ layers 1 → 31, then stop.   │
 └──────────────┬──────────────┘
                │ hidden state
                ▼
@@ -362,7 +412,7 @@ sales      ▏                 0.01</pre>
     <h2 class="h">Small model. Short answer. Your box.</h2>
     <ul class="dos">
       <li><span><b>Private by construction.</b> Tickets, emails, medical notes: the text never leaves the process.</span></li>
-      <li><span><b>Latency you can loop over.</b> 64 ms is cheap enough for every row, every request, every keystroke.</span></li>
+      <li><span><b>Latency you can loop over.</b> 55 ms is cheap enough for every row, every request, every keystroke.</span></li>
       <li><span><b>No meter running.</b> No API key, no rate limit, no invoice. Ten thousand calls cost electricity.</span></li>
       <li><span><b>Runs anywhere.</b> MLX on Apple Silicon, PyTorch on CUDA, CPU or MPS.</span></li>
       <li><span><b>Your model.</b> Swap the backbone, register your own with one command, fine-tune the head on your data.</span></li>
@@ -376,7 +426,7 @@ sales      ▏                 0.01</pre>
 <pre class="scroll"><span class="dim">- from typesafe_sdk import TypeSafeClient, Choice, Noul, Score</span>
 + from jul import TypeSafeClient, Choice, Noul, Score
 
-client = TypeSafeClient(model="minicpm5-2b")
+client = TypeSafeClient(model="wemm-4b-4bit")
 
 r = client.system_one(
     state={"ticket": "I was charged twice this month."},
@@ -397,23 +447,33 @@ r.choices["team"].probabilities  <span class="dim"># {"billing": 0.88, ...}</spa
   <!-- ── BENCH ──────────────────────────────────────────────── -->
   <section class="win c12" data-title="BENCH.TXT" id="bench">
     <p class="eyebrow">ZERO-SHOT · JEV'S PUBLISHED BENCHMARK · 300 EXAMPLES</p>
-    <h2 class="h">The numbers, read honestly.</h2>
-<pre class="scroll" aria-label="Benchmark table">MODEL                        AG NEWS  BANKING77  EMOTION   MEAN   ECE ↓    P50
-───────────────────────────────────────────────────────────────────────────────
-WeMM-Embedding-4B, 4-bit ²     0.84      0.90      0.78   0.840   0.111   96 ms
-jul minicpm5-2b-decision ¹     0.91      0.79      0.69   0.796   0.133  217 ms
-Jev (published)                0.91      0.87      0.48   0.753   0.156  246 ms
-jul qwen3.5-9b                 0.79      0.74      0.45   0.660   0.175  273 ms
-jul minicpm5-2b                0.80      0.59      0.46   0.617   0.113   64 ms
-GLiNER2.5 (published)          0.70      0.61      0.44   0.583   0.101  128 ms</pre>
+    <h2 class="h">Jev's own benchmark, beaten by 12 points.</h2>
+<div class="scroll bench-wrap">
+    <table class="bench" id="bench-table" aria-label="Benchmark table, sortable by column">
+      <thead><tr><th scope="col"><button type="button">MODEL</button></th><th scope="col" data-best="max"><button type="button">AG NEWS</button></th><th scope="col" data-best="max"><button type="button">BANKING77</button></th><th scope="col" data-best="max"><button type="button">EMOTION</button></th><th scope="col" data-best="max"><button type="button">MEAN</button></th><th scope="col" data-best="min"><button type="button">ECE ↓</button></th><th scope="col" data-best="min"><button type="button">P50</button></th><th scope="col" data-best="min"><button type="button">MEMORY</button></th></tr></thead>
+      <tbody>
+        <tr><th scope="row">jul wemm-4b ²</th><td data-v="0.95">0.95</td><td data-v="0.88">0.88</td><td data-v="0.8">0.80</td><td data-v="0.877">0.877</td><td data-v="0.112">0.112</td><td data-v="78">78 ms</td><td data-v="4.5">4.5 GB</td></tr>
+        <tr><th scope="row">jul wemm-9b ²</th><td data-v="0.97">0.97</td><td data-v="0.84">0.84</td><td data-v="0.78">0.78</td><td data-v="0.863">0.863</td><td data-v="0.114">0.114</td><td data-v="138">138 ms</td><td data-v="9.0">9.0 GB</td></tr>
+        <tr><th scope="row">jul wemm-4b-4bit ²</th><td data-v="0.9">0.90</td><td data-v="0.87">0.87</td><td data-v="0.8">0.80</td><td data-v="0.857">0.857</td><td data-v="0.084">0.084</td><td data-v="55">55 ms</td><td data-v="2.6">2.6 GB</td></tr>
+        <tr><th scope="row">jul f2llm-4b ²</th><td data-v="0.89">0.89</td><td data-v="0.82">0.82</td><td data-v="0.81">0.81</td><td data-v="0.84">0.840</td><td data-v="0.09">0.090</td><td data-v="46">46 ms</td><td data-v="3.0">3.0 GB</td></tr>
+        <tr><th scope="row">jul f2llm-1.7b ²</th><td data-v="0.91">0.91</td><td data-v="0.67">0.67</td><td data-v="0.87">0.87</td><td data-v="0.817">0.817</td><td data-v="0.082">0.082</td><td data-v="24">24 ms</td><td data-v="1.0">1.0 GB</td></tr>
+        <tr><th scope="row">jul minicpm5-2b-decision ¹</th><td data-v="0.91">0.91</td><td data-v="0.79">0.79</td><td data-v="0.69">0.69</td><td data-v="0.796">0.796</td><td data-v="0.133">0.133</td><td data-v="217">217 ms</td><td data-v="1.3">1.3 GB</td></tr>
+        <tr class="jev"><th scope="row">Jev (published)</th><td data-v="0.91">0.91</td><td data-v="0.87">0.87</td><td data-v="0.48">0.48</td><td data-v="0.753">0.753</td><td data-v="0.156">0.156</td><td data-v="246">246 ms</td><td data-v="">hosted</td></tr>
+        <tr><th scope="row">jul harrier-0.6b ²</th><td data-v="0.72">0.72</td><td data-v="0.52">0.52</td><td data-v="0.76">0.76</td><td data-v="0.667">0.667</td><td data-v="0.144">0.144</td><td data-v="13">13 ms</td><td data-v="0.31">0.31 GB</td></tr>
+        <tr><th scope="row">jul minicpm5-2b</th><td data-v="0.8">0.80</td><td data-v="0.59">0.59</td><td data-v="0.46">0.46</td><td data-v="0.617">0.617</td><td data-v="0.113">0.113</td><td data-v="64">64 ms</td><td data-v="2.7">2.7 GB</td></tr>
+        <tr><th scope="row">GLiNER2.5 (published)</th><td data-v="0.7">0.70</td><td data-v="0.61">0.61</td><td data-v="0.44">0.44</td><td data-v="0.583">0.583</td><td data-v="0.101">0.101</td><td data-v="128">128 ms</td><td data-v="">—</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="note">Click a column to sort. Highlighted: the best value in each column.</p>
     <div class="two" style="margin-top:1.2em">
       <ul class="dos">
-        <li><span>¹ The decision model trained on these three tasks' training splits (the bench uses their test splits). Jev's training data is unpublished. On six sources neither model trained on, Jev leads: 0.857 against 0.721.</span></li>
-        <li><span>² Tencent's embedding model, converted by us to MLX 4-bit (2.6 GB), <b>not wired into jul yet</b>. Banking77 and Emotion are in MTEB, which embedding models train on; on AG News it is 7 points behind Jev.</span></li>
-        <li><span>Read without any training, jul beats GLiNER and is <b>better calibrated than Jev</b> nearly everywhere.</span></li>
+        <li><span>² Embedding LLMs (Tencent, CodeFuse-AI, Microsoft), read by jul like any other model: <code>jul models add</code>. <b>Better calibrated than Jev, all six.</b></span></li>
+        <li><span>Banking77 and Emotion are in MTEB, which embedding models train on. AG News is not: there, <b>wemm-9b scores 0.97 against 0.91</b>.</span></li>
+        <li><span>¹ Trained on these three tasks' training splits. On six sources neither model trained on, Jev leads: 0.857 against 0.721.</span></li>
       </ul>
       <ul class="dos">
-        <li><span>With 1,000 labeled examples, the 2B model reaches <b>0.757 at 65 ms</b>: Jev's level at a quarter of its latency.</span></li>
+        <li><span>With 1,000 labeled examples, <b>wemm-4b-4bit reaches 0.897</b> and 0.94 on Banking77. Harrier-0.6B passes Jev in 0.31 GB at 13 ms.</span></li>
         <li><span>100 rows per dataset: ±5 points per cell, ±3 on the mean. If a bag of words solves your task, use it: <a href="https://github.com/usejul/jul#the-baseline-worth-remembering">we measured that too</a>.</span></li>
       </ul>
     </div>
@@ -426,7 +486,7 @@ GLiNER2.5 (published)          0.70      0.61      0.44   0.583   0.101  128 ms<
 <pre class="scroll">C:\> pip install jul
 C:\> jul setup
 <span class="dim">  backend ....... mlx (Apple Silicon)
-  model ......... minicpm5-2b, downloaded once
+  model ......... wemm-4b-4bit, 2.6 GB, downloaded once
   check ......... 1 decision OK</span></pre>
     <p style="margin-top:1em"><code>jul setup</code> picks the backend (MLX on Apple Silicon, PyTorch elsewhere), installs it if missing, downloads the model once and runs one real decision.</p>
     <p class="note">No terminal handy? <a href="#agent">Let an agent do it →</a></p>
@@ -438,12 +498,12 @@ C:\> jul setup
     <h2 class="h">Let a big LLM install the small one.</h2>
     <p>Paste this into Claude Code, Codex, or any agent that has a shell.</p>
 <pre class="prompt" id="agent-prompt">Install jul (https://pypi.org/project/jul/), a local library that answers typed questions
-with a 2B model, and check that it works on this machine.
+with a 4B model, and check that it works on this machine.
 
 1. Create a virtualenv with Python &gt;= 3.10.
 2. In that venv: pip install jul   then   jul setup
    jul setup picks the backend (MLX on Apple Silicon, else PyTorch), installs it, downloads
-   MiniCPM5-2B (a few GB) and runs one test decision.
+   WeMM-Embedding-4B (2.6 GB, 4-bit) and runs one test decision.
 3. Then run:
    jul ask choice "Which team should handle this ticket?" -o billing:"payments, invoices" -o technical:"bugs, errors" --state "I was charged twice"
    and show me the JSON.
@@ -545,7 +605,7 @@ latency per decision, and the answer to the ticket.</pre>
   document.fonts && document.fonts.ready.then(fitAll);
 
   // ── phosphor ──────────────────────────────────────────────────────────
-  const phosphors = [["green", "GRN"], ["amber", "AMB"], ["white", "WHT"]];
+  const phosphors = [["amber", "AMB"], ["green", "GRN"], ["white", "WHT"]];
   const unlockRgb = () => { if (!phosphors.some(p => p[0] === "rgb")) phosphors.push(["rgb", "RGB"]); };
   if (store.get("jul-konami")) unlockRgb();
   let ph = Math.max(0, phosphors.findIndex(p => p[0] === store.get("jul-phosphor")));
@@ -569,12 +629,12 @@ latency per decision, and the answer to the ticket.</pre>
     "JuL BIOS v0.1",
     "",
     "CPU  : whatever you have ............ OK",
-    "RAM  : 1.3 GB needed ................ OK",
+    "RAM  : 2.6 GB needed ................ OK",
     "GPU  : Metal / CUDA / CPU ........... OK",
     "NET  : not required ................. SKIP",
     "API KEY : not required .............. SKIP",
     "",
-    "Loading MINICPM5-2B.SYS  ",
+    "Loading WEMM-4B-4BIT.SYS  ",
   ];
   const bar = n => "[" + "█".repeat(n) + "░".repeat(20 - n) + "] " + String(n * 5).padStart(3) + "%";
   const finishBoot = () => { boot.hidden = true; store.sset("jul-booted", "1"); startTerm(); };
@@ -619,7 +679,7 @@ latency per decision, and the answer to the ticket.</pre>
     const script = [
       ["cmd", 'jul ask choice "Which team should handle this ticket?" -o billing:"payments, invoices" -o technical:"bugs, errors" -o sales:"pricing, plans" --state "I was charged twice"'],
       ["out", `{
-  "model": "minicpm5-2b",
+  "model": "wemm-4b-4bit",
   "usage": {"input_tokens": 24, "output_tokens": 0, "total_tokens": 24},
   "answers": {
     "choice": {
@@ -628,7 +688,7 @@ latency per decision, and the answer to the ticket.</pre>
       "confidence": 0.88
     }
   },
-  "latency_ms": 64.2
+  "latency_ms": 55.3
 }`],
       ["ok", "\n# 0 tokens generated · 0 bytes sent · 0 ¢\n"],
       ["cmd", ""],
@@ -753,6 +813,183 @@ latency per decision, and the answer to the ticket.</pre>
     };
     if (actions[k]) { e.preventDefault(); actions[k](); }
   });
+
+  // ── jul vs Jev: one model, three KPIs, Jev beside each ─────────────────
+  // acc, ms, gb, where the latency was measured; tuned: acc, ms, where
+  const VS_JEV = { acc: .753, ms: 246 };
+  const VS = {
+    "wemm-4b-4bit": { zs: [.857, 55, 2.6, "M5 Max"], tuned: [.897, 59, 2.6, "M5 Max"], label: "WeMM-Embedding-4B" },
+    "f2llm-1.7b":   { zs: [.817, 24, 1.0, "M5 Max"], tuned: [.833, 24, 1.0, "M5 Max"], label: "F2LLM-v2-1.7B" },
+    "harrier-0.6b": { zs: [.667, 13, .31, "M5 Max"], tuned: [.814, 13, .31, "M5 Max"], label: "Harrier-OSS-0.6B" },
+    "minicpm5-2b":  { zs: [.617, 64, 2.7, "M4 Pro"], tuned: [.757, 38, 2.7, "M5 Max"], label: "MiniCPM5-2B" },
+  };
+  const vs = { model: "wemm-4b-4bit", mode: "zs" };
+  const KB = 20;
+  const kbar = (v, max) => { const n = Math.max(1, Math.round(Math.min(v, max) / max * KB)); return "█".repeat(n) + "░".repeat(KB - n); };
+  const setBars = (id, julTxt, jevTxt) => {
+    const el = document.getElementById(id);
+    el.innerHTML = "";
+    const a = document.createElement("div"); a.textContent = "jul " + julTxt;
+    const b = document.createElement("div"); b.className = "jev"; b.textContent = "Jev " + jevTxt;
+    el.append(a, b);
+  };
+  const setDelta = (id, text, kind) => { const el = document.getElementById(id); el.textContent = text; el.className = "delta " + kind; };
+  const tween = (id, to, digits) => {
+    const el = document.getElementById(id);
+    const from = parseFloat(el.textContent) || 0;
+    if (reduced || from === to) { el.textContent = to.toFixed(digits); return; }
+    const t0 = performance.now(), dur = 350;
+    const step = t => {
+      const k = Math.min(1, (t - t0) / dur);
+      el.textContent = (from + (to - from) * (1 - Math.pow(1 - k, 3))).toFixed(digits);
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  };
+  const renderVs = () => {
+    const m = VS[vs.model];
+    const [acc, ms, gb, hw] = m[vs.mode];
+    tween("kpi-acc", acc * 100, 1);
+    tween("kpi-ms", ms, 0);
+    tween("kpi-gb", gb, gb < 1 ? 2 : 1);
+    const d = (acc - VS_JEV.acc) * 100;
+    setDelta("kpi-acc-d", (d >= 0 ? "▲ +" : "▼ −") + Math.abs(d).toFixed(1) + " pts vs Jev", d > 0 ? "win" : "lose");
+    setBars("kpi-acc-b", kbar(acc, 1) + " " + (acc * 100).toFixed(1) + "%", kbar(VS_JEV.acc, 1) + " " + (VS_JEV.acc * 100).toFixed(1) + "%");
+    const x = VS_JEV.ms / ms;
+    setDelta("kpi-ms-d", "▲ " + x.toFixed(1) + "× faster than Jev", "win");
+    setBars("kpi-ms-b", kbar(ms, 280) + " " + ms + " ms", kbar(VS_JEV.ms, 280) + " " + VS_JEV.ms + " ms");
+    setDelta("kpi-gb-d", "on your machine", "even");
+    setBars("kpi-gb-b", kbar(gb, 10) + " " + (gb < 1 ? gb.toFixed(2) : gb.toFixed(1)) + " GB", "·".repeat(KB) + " hosted");
+    document.getElementById("kpi-note").textContent =
+      `${m.label}${vs.mode === "tuned" ? " + autotune (1,000 labeled examples per task; Jev gets none)" : ", zero-shot"}. ` +
+      `Latency on an ${hw}` + (vs.model === "wemm-4b-4bit" ? "; about 145 ms on an M4 Pro." : ".") +
+      " Jev's latency includes the network; its memory is not published.";
+    document.querySelectorAll("[data-vs-model]").forEach(b => b.setAttribute("aria-pressed", b.dataset.vsModel === vs.model));
+    document.querySelectorAll("[data-vs-mode]").forEach(b => b.setAttribute("aria-pressed", b.dataset.vsMode === vs.mode));
+    document.getElementById("kpi-mode").textContent = vs.mode === "tuned" ? "+AUTOTUNE" : "ZERO-SHOT";
+  };
+  document.querySelectorAll("[data-vs-model]").forEach(b => b.addEventListener("click", () => { vs.model = b.dataset.vsModel; renderVs(); }));
+  let setMode = mode => { vs.mode = mode; renderVs(); };   // the bench chart below joins in once defined
+  document.querySelectorAll("[data-vs-mode]").forEach(b => b.addEventListener("click", () => setMode(b.dataset.vsMode)));
+  renderVs();
+
+  // ── bench table: sort by column, best value in bold ──────────────────
+  const table = document.getElementById("bench-table");
+  const heads = [...table.tHead.rows[0].cells];
+  const body = table.tBodies[0];
+  const cellVal = (tr, i) => i === 0 ? tr.cells[0].textContent : tr.cells[i].dataset.v === "" ? null : +tr.cells[i].dataset.v;
+  heads.forEach((th, i) => {
+    if (i === 0) return;
+    const rows = [...body.rows].filter(tr => cellVal(tr, i) != null);
+    const vals = rows.map(tr => cellVal(tr, i));
+    const best = th.dataset.best === "min" ? Math.min(...vals) : Math.max(...vals);
+    rows.forEach(tr => { if (cellVal(tr, i) === best) tr.cells[i].classList.add("best"); });
+  });
+  let sortCol = 4, sortDir = -1;
+  const sortTable = () => {
+    const rows = [...body.rows].sort((a, b) => {
+      const x = cellVal(a, sortCol), y = cellVal(b, sortCol);
+      if (x == null) return 1; if (y == null) return -1;
+      return (sortCol === 0 ? x.localeCompare(y) : x - y) * sortDir;
+    });
+    rows.forEach(tr => body.appendChild(tr));
+    heads.forEach((th, i) => i === sortCol ? th.setAttribute("aria-sort", sortDir > 0 ? "ascending" : "descending") : th.removeAttribute("aria-sort"));
+  };
+  heads.forEach((th, i) => th.querySelector("button").addEventListener("click", () => {
+    if (sortCol === i) sortDir = -sortDir;
+    else { sortCol = i; sortDir = i === 0 || th.dataset.best === "min" ? 1 : -1; }
+    sortTable();
+  }));
+  sortTable();
+
+  // ── bench chart ───────────────────────────────────────────────────────
+  // [label, ag, b77, emo, mean, ece, ms, gb, tuned: [ag, b77, emo, mean, ece, ms] | null]
+  const JEV = "Jev (hosted)";
+  const BENCH = [
+    ["wemm-4b",      .95, .88, .80, .877, .112,  78, 4.5,  [.90, .84, .85, .862, null,  78]],
+    ["wemm-9b",      .97, .84, .78, .863, .114, 138, 9.0,  [.90, .84, .83, .857, null, 138]],
+    ["wemm-4b-4bit", .90, .87, .80, .857, .084,  55, 2.6,  [.94, .94, .81, .897, .067,  59]],
+    ["f2llm-4b",     .89, .82, .81, .840, .090,  46, 3.0,  [.89, .83, .84, .853, null,  46]],
+    ["f2llm-1.7b",   .91, .67, .87, .817, .082,  24, 1.0,  [.89, .72, .89, .833, null,  24]],
+    ["2b-decision",  .91, .79, .69, .796, .133, 217, 1.3,  null],
+    ["harrier-0.6b", .72, .52, .76, .667, .144,  13, 0.31, [.91, .71, .83, .814, null,  13]],
+    [JEV,            .91, .87, .48, .753, .156, 246, null, "same"],
+    ["minicpm5-2b",  .80, .59, .46, .617, .113,  64, 2.7,  [.92, .76, .59, .757, .102,  38]],
+    ["GLiNER2.5",    .70, .61, .44, .583, .101, 128, null, "same"],
+  ];
+  const chart = { metric: "acc", mode: "zs" };
+  const rowsEl = document.getElementById("chart-rows"), infoEl = document.getElementById("chart-info");
+  const TITLES = {
+    acc: { zs: "Ahead of Jev.", tuned: "Further ahead, with labels." },
+    ms: { zs: "Faster than a round trip.", tuned: "Faster than a round trip." },
+    gb: { zs: "Fits beside your 400 tabs.", tuned: "Fits beside your 400 tabs." },
+  };
+  const NOTES = {
+    acc: "Mean accuracy over AG News, Banking77 and Emotion, in points against Jev. Bars start at Jev's 0.753.",
+    ms: "p50 per decision. Embedding models on an M5 Max; minicpm5-2b and the decision model on an M4 Pro, where wemm-4b-4bit takes 146 ms. Jev is an API: its figure includes the network.",
+    gb: "Memory held by the model, 4-bit unless noted. Jev and GLiNER: not measured here.",
+  };
+  const view = () => BENCH.flatMap(([label, ag, b77, emo, mean, ece, ms, gb, t]) => {
+    if (chart.mode === "tuned") {
+      if (!t) return [];
+      if (t !== "same") [ag, b77, emo, mean, ece, ms] = t;
+    }
+    return [{ label, ag, b77, emo, mean, ece, ms, gb, fixed: t === "same" && chart.mode === "tuned" }];
+  });
+  const CW = 18, fmtGb = v => v == null ? "n/a" : (v < 1 ? v.toFixed(2) : v.toFixed(1)) + " GB";
+  const hbar = (v, max) => { const n = Math.max(0, Math.round(v / max * CW)); return "█".repeat(n) + "░".repeat(CW - n); };
+  const diverge = d => {                       // ±24 points over 9 chars each side
+    const n = Math.min(9, Math.round(Math.abs(d) / 24 * 9));
+    return d >= 0 ? " ".repeat(9) + "│" + "█".repeat(n).padEnd(9) : (" ".repeat(9 - n) + "▒".repeat(n)) + "│" + " ".repeat(9);
+  };
+  const line = r => {
+    const name = (r.label + (r.fixed ? "*" : "")).padEnd(13);
+    if (chart.metric === "acc") {
+      const d = (r.mean - .753) * 100;
+      return name + diverge(d) + " " + (r.label === JEV ? " 0.753" : (d >= 0 ? "+" : "−") + Math.abs(d).toFixed(1));
+    }
+    if (chart.metric === "ms") return name + hbar(r.ms, 280) + String(r.ms).padStart(5) + " ms";
+    return name + (r.gb == null ? "·".repeat(CW) : hbar(r.gb, 9.5)) + " " + fmtGb(r.gb);
+  };
+  const info = r => r.label + (r.fixed ? " (published, zero-shot)" : chart.mode === "tuned" ? " + autotune" : "") + "\n" +
+    `AG ${r.ag.toFixed(2)} · B77 ${r.b77.toFixed(2)} · EMO ${r.emo.toFixed(2)} · mean ${r.mean.toFixed(3)}` +
+    (r.ece != null ? ` · ECE ${r.ece.toFixed(3)}` : "") + ` · ${r.ms} ms · ${fmtGb(r.gb)}`;
+  const renderChart = () => {
+    const rows = view().sort((a, b) =>
+      chart.metric === "acc" ? b.mean - a.mean :
+      chart.metric === "ms" ? a.ms - b.ms : (a.gb ?? 99) - (b.gb ?? 99));
+    rowsEl.textContent = "";
+    rows.forEach(r => {
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.setAttribute("role", "listitem");
+      btn.textContent = line(r);
+      if (r.label === JEV) btn.classList.add("jev");
+      const show = () => { infoEl.textContent = info(r); };
+      btn.addEventListener("mouseenter", show); btn.addEventListener("focus", show); btn.addEventListener("click", show);
+      rowsEl.appendChild(btn);
+    });
+    const axis = document.createElement("div"); axis.className = "axis";
+    const pad = " ".repeat(13);
+    axis.textContent = chart.metric === "acc"
+      ? pad + "├────────┼────────┤\n" + pad + "−24".padEnd(8) + "Jev" + "+24".padStart(8) + " pts"
+      : pad + "├────────┼───────┤\n" + pad + "0".padEnd(15) + (chart.metric === "ms" ? "280 ms" : "9.5 GB");
+    rowsEl.appendChild(axis);
+    infoEl.textContent = info(rows[0]);
+    rowsEl.style.fontSize = "";
+    const base = parseFloat(getComputedStyle(rowsEl).fontSize);
+    if (rowsEl.scrollWidth > rowsEl.clientWidth)
+      rowsEl.style.fontSize = Math.max(9, Math.floor(base * rowsEl.clientWidth / rowsEl.scrollWidth * 10) / 10) + "px";
+    document.getElementById("chart-title").textContent = TITLES[chart.metric][chart.mode];
+    document.getElementById("chart-note").textContent = NOTES[chart.metric] + (chart.mode === "tuned" ? " +autotune: 1,000 labeled examples per task; * Jev and GLiNER get no task data." : "");
+    document.querySelectorAll("[data-metric]").forEach(b => b.setAttribute("aria-pressed", b.dataset.metric === chart.metric));
+    document.querySelectorAll("[data-mode]").forEach(b => b.setAttribute("aria-pressed", b.dataset.mode === chart.mode));
+  };
+  document.querySelectorAll("[data-metric]").forEach(b => b.addEventListener("click", () => { chart.metric = b.dataset.metric; renderChart(); }));
+  setMode = mode => { vs.mode = chart.mode = mode; renderVs(); renderChart(); };
+  document.querySelectorAll("[data-mode]").forEach(b => b.addEventListener("click", () => setMode(b.dataset.mode)));
+  renderChart();
+  addEventListener("resize", renderChart);
+  document.fonts && document.fonts.ready.then(renderChart);
 
   // ── glider ────────────────────────────────────────────────────────────
   const W = 22, Hh = 9, life = document.getElementById("life");
