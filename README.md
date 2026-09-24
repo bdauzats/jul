@@ -273,21 +273,27 @@ rows below it receive task data at call time and Jev receives none.
 
 | Zero-shot                      |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |       p50 |
 | ------------------------------ | -------: | --------: | -------: | --------: | --------: | --------: |
-| jul `minicpm5-2b-decision` ¹   | **0.91** |      0.79 | **0.69** | **0.796** |     0.133 |    217 ms |
-| Jev (published)                | **0.91** |  **0.87** |     0.48 |     0.753 |     0.156 |    246 ms |
+| WeMM-Embedding-4B, MLX 4-bit ² |     0.84 |  **0.90** | **0.78** | **0.840** |     0.111 | **96 ms** |
+| jul `minicpm5-2b-decision` ¹   | **0.91** |      0.79 |     0.69 |     0.796 |     0.133 |    217 ms |
+| Jev (published)                | **0.91** |      0.87 |     0.48 |     0.753 |     0.156 |    246 ms |
 | jul `qwen3.5-9b`               |     0.79 |      0.74 |     0.45 |     0.660 |     0.175 |    273 ms |
 | jul `minicpm5-2b`              |     0.80 |      0.59 |     0.46 |     0.617 | **0.113** | **64 ms** |
 | GLiNER2.5 (published)          |     0.70 |      0.61 |     0.44 |     0.583 |     0.101 |    128 ms |
 
 Zero-shot means no example of the task at call time: every row here gets the text, the question and the
-option list, nothing else. The first two rows are models *trained* to decide, the next two are general
-LLMs read without training, and GLiNER is a trained zero-shot tagger.
+option list, nothing else. The first row is an embedding model, the next two are models *trained* to
+decide, then two general LLMs read without training, and GLiNER is a trained zero-shot tagger.
 
 ¹ Measured on **v1.0**; the benchmark has not been read again for v1.1. `minicpm5-2b-decision` learned
 these three tasks during training, on their training splits (the
 benchmark rows come from the test splits). Jev's training data is not published, so whether it saw them
 too is unknown. On six sources neither it nor Kev ever trained on, it scores 0.721 against Jev's 0.857:
 see [the development sets](#the-decision-model-on-the-development-sets).
+
+² Not a `jul` model yet: an embedding model, measured by its own script on the same 300 rows with the
+same metrics. Banking77 and Emotion belong to MTEB, which embedding models train on, so it has probably
+seen both; on AG News, which it has not, it is 7 points behind Jev. See
+[An embedding model: WeMM-Embedding-4B](#an-embedding-model-wemm-embedding-4b).
 
 | With task data (not comparable)        |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |       p50 |
 | -------------------------------------- | -------: | --------: | -------: | --------: | --------: | --------: |
@@ -358,6 +364,7 @@ Cells are accuracy / ECE (lower is better) / p50 latency.
   0.485 in French, below `jul`'s untrained vector method. That reversal is what v1.1 was trained for.
 - On sources it was never trained on (`transfer-v4`) it scores 0.739, against 0.652 for Kev-0.8B and
   0.797 for Kev-4B; Jev 0.857.
+
 ### The decision model, on the Jev benchmark
 
 Its row sits in the table above, measured on the same 300 rows with the same metrics
@@ -374,6 +381,42 @@ Its row sits in the table above, measured on the same 300 rows with the same met
   layers, since it reads the last one. Cost therefore scales with the options: four labels cost 111 ms,
   seventy-two cost 431 ms. Caching them would need the format to put the options before the text, which
   means retraining.
+
+### An embedding model: WeMM-Embedding-4B
+
+[`tencent/WeMM-Embedding-4B`](https://huggingface.co/tencent/WeMM-Embedding-4B) is Tencent's
+multimodal embedding model, built on Qwen3.5-4B and released under Apache-2.0. It is not an LLM read
+from the inside like the presets above: it was trained to turn a text into one vector, so the text and
+each option are embedded separately and compared by cosine — the same idea as `jul`'s vector reading,
+done by a model built for it. We converted it to MLX, 4-bit and text only:
+[`bdauzats/WeMM-Embedding-4B-mlx-4bit`](https://huggingface.co/bdauzats/WeMM-Embedding-4B-mlx-4bit)
+(2.6 GB, same accuracy as the bf16 original). It is not wired into `jul` yet.
+
+**Who it is for: anyone sorting one text into labels described in words, with no labeled data.**
+Ticket routing, topics, intents, sentiment, emotions. On the development sets it beats everything
+else here, the trained decision model included, and French costs it nothing:
+
+| Development set (label sentences) | `minicpm5-2b` (vectors) | `minicpm5-2b-decision` | WeMM-Embedding-4B |
+| --- | ---: | ---: | ---: |
+| FinancialPhraseBank | 0.705 | 0.740 | **0.800** |
+| Yahoo Topics | 0.450 | 0.565 | **0.655** |
+| Empathetic | 0.345 | 0.460 | **0.510** |
+| Massive (59 options) | 0.670 | 0.715 | **0.780** |
+| **Mean** (ECE) | 0.542 (0.109) | 0.620 (0.140) | **0.686** (0.099) |
+| MASSIVE English / French, option names | 0.640 / 0.535 | **0.815 / 0.710** ³ | 0.595 / 0.590 |
+
+³ Trained on MASSIVE, English and French.
+
+**What it is not for: any question that needs the text and something else read together.** Is this
+sentence a paraphrase of that one, does this case satisfy the policy, is the report late. An embedding
+never sees the option while it reads the text, so it cannot compare them. On Kev's `transfer-v4`
+(656 decision questions from sources never trained on) it scores **0.643 against 0.739** for
+`minicpm5-2b-decision`, and falls *below the majority class* on paraphrase (0.45), two of three policy
+compositions and deadlines. Use the decision model for those.
+
+One temperature, 0.0219 fitted on the development sets, calibrates it across tasks (fitted on three
+sets, scored on the fourth, it stays within 0.021–0.023). Latency follows the text length, not the
+option count: options are embedded once, so 52 ms for a short utterance, about 240 ms for a paragraph.
 
 ## Context — what the data looks like
 
@@ -576,6 +619,14 @@ And the honest question is the same one as for text: a small vision model traine
 would probably do as well for a fraction of the cost. ResNet plus a logistic regression has been the
 image equivalent of TF-IDF for a decade, and it deserves the same benchmark row before anything else
 is built.
+
+### WeMM-Embedding-4B as a `jul` model
+
+Measured, not wired in (see [the section above](#an-embedding-model-wemm-embedding-4b)). The natural
+shape is routing by question type: a `Choice` over a single text goes to WeMM, anything that reads two
+things together goes to `minicpm5-2b-decision`. It needs its own reading (pooling at the
+`<embedding>` token, no center, no layer to choose), its temperature in the preset, and `Noul` and
+`Score` measured — only `Choice` is so far.
 
 ### Smaller leads, already measured
 
