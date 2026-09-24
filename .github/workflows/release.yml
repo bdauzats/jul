@@ -1,0 +1,206 @@
+name: Release
+
+# One build, two destinations:
+#
+#   push to main            -> TestPyPI, as 0.1.0.dev<run number>
+#   GitHub release published -> PyPI, as the version in lib/jul/__init__.py
+#
+# The same artifact is built, checked and installed in a clean environment before either upload, so
+# a broken sdist or a missing asset fails here and not in somebody's `pip install`.
+#
+# Uploads use PyPI Trusted Publishing (OIDC): no API token lives in this repo. Each index needs a
+# publisher declared once on its side, and TestPyPI runs only where the PUBLISH_TESTPYPI repository
+# variable is set. docs/publishing.md has the setup and the reasoning.
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  build:
+    name: build sdist and wheel
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      # A release must not ship a version nobody can find in the source tree.
+      - name: The tag and the package version agree
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python - <<'PY'
+          import os, pathlib, re, sys
+          tag = os.environ["TAG"].lstrip("v")
+          src = pathlib.Path("lib/jul/__init__.py").read_text()
+          version = re.search(r'__version__ = "([^"]+)"', src).group(1)
+          if tag != version:
+              sys.exit(f"release tag {tag!r} but jul.__version__ is {version!r}")
+          print(f"tag and version agree: {version}")
+          PY
+
+      # Every push to main uploads to TestPyPI, and an index refuses a version twice, so a run that
+      # is not a release gets its own throwaway version. pyproject reads the version from the
+      # module attribute, so rewriting that one line is enough.
+      - name: Stamp a dev version on anything that is not a release
+        id: version
+        run: |
+          python - <<'PY'
+          import os, pathlib, re
+          path = pathlib.Path("lib/jul/__init__.py")
+          src = path.read_text()
+          version = re.search(r'__version__ = "([^"]+)"', src).group(1)
+          if os.environ["GITHUB_EVENT_NAME"] != "release":
+              version = f"{version}.dev{os.environ['GITHUB_RUN_NUMBER']}"
+              path.write_text(re.sub(r'__version__ = "[^"]+"',
+                                     f'__version__ = "{version}"', src, count=1))
+          print(f"building {version}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"version={version}\n")
+          PY
+
+      - name: Build
+        run: |
+          pip install build twine
+          python -m build
+
+      - name: Metadata is renderable on the index page
+        run: twine check --strict dist/*
+
+      # An sdist that cannot build a wheel is an sdist nobody can install from source. The package
+      # data lives outside the package directory (lib/jul/assets), which is exactly the arrangement
+      # that goes missing from an sdist, so this check earns its 30 seconds.
+      - name: The sdist alone can build the wheel
+        run: |
+          mkdir -p /tmp/from-sdist
+          tar xzf dist/*.tar.gz -C /tmp/from-sdist --strip-components=1
+          cd /tmp/from-sdist
+          python -m build --wheel --outdir /tmp/from-sdist/dist
+          python - <<'PY'
+          import pathlib, zipfile
+          wheel = next(pathlib.Path("/tmp/from-sdist/dist").glob("*.whl"))
+          names = set(zipfile.ZipFile(wheel).namelist())
+          missing = [n for n in ("jul/assets/minicpm5-2b.one_word.center.npy",
+                                 "jul/assets/presets/minicpm5-2b@torch.json")
+                     if n not in names]
+          if missing:
+              raise SystemExit(f"rebuilt from the sdist, these are gone: {missing}")
+          print(f"{wheel.name} rebuilt from the sdist with its assets")
+          PY
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  # The install a stranger does: the wheel, no extras, no checkout in sight. Catches an asset that
+  # never made it into the wheel and an import that quietly needs a backend.
+  smoke:
+    name: install the wheel (${{ matrix.os }}, py${{ matrix.python }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-24.04, python: "3.10"}
+          - {os: ubuntu-24.04, python: "3.13"}
+          - {os: macos-15, python: "3.13"}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: pip install the wheel
+        run: pip install dist/*.whl
+
+      - name: It imports, it carries its assets, it needs no backend
+        env:
+          EXPECTED: ${{ needs.build.outputs.version }}
+        run: |
+          python - <<'PY'
+          import importlib.util as u, os, pathlib, sys
+          import jul
+
+          assert jul.__version__ == os.environ["EXPECTED"], \
+              f"installed {jul.__version__}, built {os.environ['EXPECTED']}"
+
+          assets = pathlib.Path(jul.__file__).parent / "assets"
+          for name in ("minicpm5-2b.one_word.center.npy", "presets/minicpm5-2b@torch.json"):
+              assert (assets / name).is_file(), f"{name} missing from the installed package"
+
+          for backend in ("mlx", "torch"):
+              assert u.find_spec(backend) is None, f"{backend} came in with the base install"
+
+          from jul import TypeSafeClient, Choice, Context      # noqa: F401
+          print(f"jul {jul.__version__} installed and importable on {sys.version.split()[0]}")
+          PY
+
+      - name: The console script is on PATH
+        run: |
+          jul --help
+          jul models
+
+  testpypi:
+    name: publish to TestPyPI
+    needs: [build, smoke]
+    if: github.event_name == 'push' && vars.PUBLISH_TESTPYPI == 'true'
+    runs-on: ubuntu-24.04
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/jul
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@v1.14.2
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          print-hash: true
+
+  pypi:
+    name: publish to PyPI
+    needs: [build, smoke]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/p/jul
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@v1.14.2
+        with:
+          print-hash: true
