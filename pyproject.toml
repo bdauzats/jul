@@ -32,6 +32,8 @@ mlx = ["mlx>=0.32; sys_platform == 'darwin' and platform_machine == 'arm64'",
        "mlx-lm>=0.31; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 torch = ["torch>=2.4", "transformers>=5.0", "accelerate"]
 yaml = ["pyyaml>=6"]
+# OpenTelemetry export (JUL_ENABLE_TELEMETRY=1). OTLP over HTTP; add opentelemetry-exporter-otlp-proto-grpc for grpc.
+otel = ["opentelemetry-sdk>=1.30", "opentelemetry-exporter-otlp-proto-http>=1.30"]
 # `jul models add` downloads its calibration data with `datasets`.
 calibrate = ["datasets", "pyarrow"]
 # The lab trains its heads with MLX.
