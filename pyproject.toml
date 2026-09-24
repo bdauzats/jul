@@ -23,7 +23,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/bdauzats/jul"
+Homepage = "https://bdauzats.github.io/jul/"
 Repository = "https://github.com/bdauzats/jul"
 Issues = "https://github.com/bdauzats/jul/issues"
 

@@ -1,5 +1,7 @@
 # JuL — Juste un LLM
 
+**[bdauzats.github.io/jul](https://bdauzats.github.io/jul/)** · [PyPI](https://pypi.org/project/jul/)
+
 A headless decision runtime: same typed-decision interface as Jev's SDK, but the model underneath is
 yours to pick, swap, or fine-tune. No hosted API, no fixed backbone — point it at any local LLM (MLX
 or PyTorch) and it becomes a calibrated decision head for that model.
