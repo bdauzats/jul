@@ -679,7 +679,7 @@ latency per decision, and the answer to the ticket.</pre>
 
   // ↑ ↑ ↓ ↓ ← → ← → B A
   const KONAMI = ["arrowup", "arrowup", "arrowdown", "arrowdown", "arrowleft", "arrowright", "arrowleft", "arrowright", "b", "a"];
-  let kpos = 0, rainTimer = null;
+  let recent = [], rainTimer = null;
   const stopRain = () => { clearInterval(rainTimer); rainTimer = null; };
   const startRain = () => {
     const rain = document.getElementById("rain");
@@ -709,10 +709,11 @@ latency per decision, and the answer to the ticket.</pre>
     if (!boot.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
     const k = e.key.toLowerCase();
 
-    // the code runs before anything else, so its B does not jump to Bench
-    kpos = k === KONAMI[kpos] ? kpos + 1 : (k === KONAMI[0] ? 1 : 0);
-    if (kpos === KONAMI.length) { kpos = 0; e.preventDefault(); closeModals(); konami(); return; }
-    if (kpos >= 8) return;
+    // the last ten keys against the code, so extra keys before it do no harm;
+    // checked before anything else, so its B does not jump to Bench
+    recent = [...recent, k].slice(-KONAMI.length);
+    if (recent.join() === KONAMI.join()) { recent = []; e.preventDefault(); closeModals(); konami(); return; }
+    if (k === "b" && recent.slice(-9, -1).join() === KONAMI.slice(0, 8).join()) return;
 
     if (k === "escape") { closeModals(); return; }
     const modalOpen = [...document.querySelectorAll(".modal")].some(m => !m.hidden);
