@@ -16,7 +16,7 @@ from .tuning import TuningReport
 from .types import (Choice, ChoiceAnswer, Noul, NoulAnswer, NoulCriteria, Score, ScoreAnswer,
                     SystemOneResponse, Usage)
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "TypeSafeClient", "AsyncTypeSafeClient",
