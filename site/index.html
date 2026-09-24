@@ -421,10 +421,9 @@ GLiNER2.5 (published)          0.70      0.61      0.44   0.583   0.101  128 ms<
 
   <!-- ── INSTALL ────────────────────────────────────────────── -->
   <section class="win c6" data-title="INSTALL.BAT" id="install">
-    <p class="eyebrow">THREE LINES</p>
+    <p class="eyebrow">TWO LINES · <a href="https://pypi.org/project/jul/">ON PYPI</a></p>
     <h2 class="h">Up in one coffee.</h2>
-<pre class="scroll">C:\> git clone https://github.com/bdauzats/jul
-C:\> cd jul && pip install -e .
+<pre class="scroll">C:\> pip install jul
 C:\> jul setup
 <span class="dim">  backend ....... mlx (Apple Silicon)
   model ......... minicpm5-2b, downloaded once
@@ -438,11 +437,11 @@ C:\> jul setup
     <p class="eyebrow">OR FROM A PROMPT</p>
     <h2 class="h">Let a big LLM install the small one.</h2>
     <p>Paste this into Claude Code, Codex, or any agent that has a shell.</p>
-<pre class="prompt" id="agent-prompt">Install jul (https://github.com/bdauzats/jul), a local library that answers typed questions
+<pre class="prompt" id="agent-prompt">Install jul (https://pypi.org/project/jul/), a local library that answers typed questions
 with a 2B model, and check that it works on this machine.
 
-1. Clone it (or use the checkout I am in) and create a virtualenv with Python &gt;= 3.10 inside it.
-2. In that venv: pip install -e .   then   jul setup
+1. Create a virtualenv with Python &gt;= 3.10.
+2. In that venv: pip install jul   then   jul setup
    jul setup picks the backend (MLX on Apple Silicon, else PyTorch), installs it, downloads
    MiniCPM5-2B (a few GB) and runs one test decision.
 3. Then run:
@@ -468,6 +467,7 @@ latency per decision, and the answer to the ticket.</pre>
   <a href="https://github.com/jguyon">jguyon</a> .......... contributor</pre>
     <p class="note">
       <a href="https://github.com/bdauzats/jul">github.com/bdauzats/jul</a> ·
+      <a href="https://pypi.org/project/jul/">pip install jul</a> ·
       <a href="https://huggingface.co/bdauzats/minicpm5-2b-decision-mlx-4bit">weights on Hugging Face</a> ·
       Not affiliated with TypeSafe AI or Jev.
     </p>
