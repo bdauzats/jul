@@ -195,6 +195,15 @@ response.model, response.usage.input_tokens
 **The option description is what the model compares against**, so options must describe themselves.
 The key (`"billing"`) is only the identifier you get back.
 
+### Showcases
+
+[**jul-showcases**](https://github.com/guyon-it-consulting/jul-showcases), by
+[Jérôme Guyon](https://github.com/JeromeGuyon): seven small demos, each one an idea from
+[jevable.com](https://jevable.com/) running locally through JuL. They include a form that branches
+itself, re-ranking by intent, notification triage, prompt-difficulty routing, 50,000 real support
+tickets triaged in 668 s at $0, `autotune` taking a fast model from 82.0% to 96.5%, and an on-device
+browser agent that books a train on SNCF Connect.
+
 ## How it answers
 
 For each formulation of the preset, the state and every option go through the same prompt; the answer
