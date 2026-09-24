@@ -23,9 +23,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://bdauzats.github.io/jul/"
-Repository = "https://github.com/bdauzats/jul"
-Issues = "https://github.com/bdauzats/jul/issues"
+Homepage = "https://usejul.github.io/jul/"
+Repository = "https://github.com/usejul/jul"
+Issues = "https://github.com/usejul/jul/issues"
 
 [project.optional-dependencies]
 mlx = ["mlx>=0.32; sys_platform == 'darwin' and platform_machine == 'arm64'",

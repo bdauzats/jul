@@ -236,7 +236,7 @@ ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shad
   <a href="#install"><u>I</u>nstall</a>
   <a href="#bench"><u>B</u>ench</a>
   <a href="#how"><u>H</u>ow</a>
-  <a href="https://github.com/bdauzats/jul"><u>G</u>itHub</a>
+  <a href="https://github.com/usejul/jul"><u>G</u>itHub</a>
   <span class="spacer"></span>
   <button id="keys" type="button" title="Keyboard shortcuts" aria-haspopup="dialog">[?] Keys</button>
   <button id="phosphor" type="button" title="Change phosphor">PHOSPHOR:<span id="ph-name">GRN</span></button>
@@ -265,7 +265,7 @@ ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shad
         </p>
         <div class="cta">
           <a class="primary" href="#install">[ INSTALL ]</a>
-          <a href="https://github.com/bdauzats/jul">[ SOURCE ]</a>
+          <a href="https://github.com/usejul/jul">[ SOURCE ]</a>
           <a href="#bench">[ NUMBERS ]</a>
         </div>
       </div>
@@ -414,7 +414,7 @@ GLiNER2.5 (published)          0.70      0.61      0.44   0.583   0.101  128 ms<
       </ul>
       <ul class="dos">
         <li><span>With 1,000 labeled examples, the 2B model reaches <b>0.757 at 65 ms</b>: Jev's level at a quarter of its latency.</span></li>
-        <li><span>100 rows per dataset: ±5 points per cell, ±3 on the mean. If a bag of words solves your task, use it: <a href="https://github.com/bdauzats/jul#the-baseline-worth-remembering">we measured that too</a>.</span></li>
+        <li><span>100 rows per dataset: ±5 points per cell, ±3 on the mean. If a bag of words solves your task, use it: <a href="https://github.com/usejul/jul#the-baseline-worth-remembering">we measured that too</a>.</span></li>
       </ul>
     </div>
   </section>
@@ -466,9 +466,9 @@ latency per decision, and the answer to the ticket.</pre>
   <a href="https://github.com/jlestel">jlestel</a> ......... contributor
   <a href="https://github.com/jguyon">jguyon</a> .......... contributor</pre>
     <p class="note">
-      <a href="https://github.com/bdauzats/jul">github.com/bdauzats/jul</a> ·
+      <a href="https://github.com/usejul/jul">github.com/usejul/jul</a> ·
       <a href="https://pypi.org/project/jul/">pip install jul</a> ·
-      <a href="https://huggingface.co/bdauzats/minicpm5-2b-decision-mlx-4bit">weights on Hugging Face</a> ·
+      <a href="https://huggingface.co/usejul/minicpm5-2b-decision-mlx-4bit">weights on Hugging Face</a> ·
       Not affiliated with TypeSafe AI or Jev.
     </p>
     <p class="note">C:\JUL&gt; exit<span class="blink">_</span></p>
@@ -725,7 +725,7 @@ latency per decision, and the answer to the ticket.</pre>
     const actions = {
       j: () => go(1), k: () => go(-1),
       i: () => jump("install"), b: () => jump("bench"), h: () => jump("how"),
-      g: () => { location.href = "https://github.com/bdauzats/jul"; },
+      g: () => { location.href = "https://github.com/usejul/jul"; },
       p: nextPh,
       r: () => { const t = document.getElementById("term").closest(".win"); t.focus({ preventScroll: true }); t.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" }); replayTerm(); },
       c: () => { jump("agent"); copyPrompt(); },

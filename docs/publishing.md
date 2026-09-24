@@ -38,7 +38,7 @@ project exists, which is the case for the first release):
 
 ```
 PyPI project name:  jul
-Owner:              bdauzats
+Owner:              usejul
 Repository name:    jul
 Workflow name:      release.yml
 Environment name:   pypi

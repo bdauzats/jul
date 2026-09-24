@@ -1,6 +1,6 @@
 # JuL — Juste un LLM
 
-**[bdauzats.github.io/jul](https://bdauzats.github.io/jul/)** · [PyPI](https://pypi.org/project/jul/)
+**[usejul.github.io/jul](https://usejul.github.io/jul/)** · [PyPI](https://pypi.org/project/jul/)
 
 A headless decision runtime: same typed-decision interface as Jev's SDK, but the model underneath is
 yours to pick, swap, or fine-tune. No hosted API, no fixed backbone — point it at any local LLM (MLX
@@ -88,7 +88,7 @@ on the first call.
 | ------------- | --------------------------------------------------------------------------------------- | ------: | ------------------------------------------------------------------- |
 | `minicpm5-2b` | [`openbmb/MiniCPM5-2B-MLX`](https://huggingface.co/openbmb/MiniCPM5-2B-MLX)             |  2.7 GB | [`openbmb/MiniCPM5-2B`](https://huggingface.co/openbmb/MiniCPM5-2B) |
 | `qwen3.5-9b`  | [`mlx-community/Qwen3.5-9B-4bit`](https://huggingface.co/mlx-community/Qwen3.5-9B-4bit) |   11 GB | [`Qwen/Qwen3.5-9B`](https://huggingface.co/Qwen/Qwen3.5-9B) ¹       |
-| `minicpm5-2b-decision` ² | [`bdauzats/minicpm5-2b-decision-mlx-4bit`](https://huggingface.co/bdauzats/minicpm5-2b-decision-mlx-4bit) | 1.3 GB | [`bdauzats/minicpm5-2b-decision`](https://huggingface.co/bdauzats/minicpm5-2b-decision) |
+| `minicpm5-2b-decision` ² | [`usejul/minicpm5-2b-decision-mlx-4bit`](https://huggingface.co/usejul/minicpm5-2b-decision-mlx-4bit) | 1.3 GB | [`usejul/minicpm5-2b-decision`](https://huggingface.co/usejul/minicpm5-2b-decision) |
 
 ¹ Not tested yet on PyTorch.
 ² A decision model, read differently from the two presets: see [Decision models](#decision-models). It
@@ -136,8 +136,8 @@ next to its weights, in a `decision.json` (delimiters, layout, readout, head fil
 longest state and question it was trained on).
 
 ```bash
-jul models add minicpm5-2b-decision --repo bdauzats/minicpm5-2b-decision-mlx-4bit   # MLX, 1.3 GB
-jul models add minicpm5-2b-decision --repo bdauzats/minicpm5-2b-decision --backend torch
+jul models add minicpm5-2b-decision --repo usejul/minicpm5-2b-decision-mlx-4bit   # MLX, 1.3 GB
+jul models add minicpm5-2b-decision --repo usejul/minicpm5-2b-decision --backend torch
 jul ask choice "Which team should handle this ticket?" -o billing -o shipping -o access \
     --state "I was charged twice for order 4411" --model minicpm5-2b-decision
 ```
@@ -150,8 +150,8 @@ continues from it, so questions never see each other.
 The state is paid once per call: a ticket with four questions (two `Choice`, a `Noul` and a `Score`)
 answers in **180 ms** on an M4 Pro, against 65 ms for the first question alone. What costs is the
 options — they are re-read on every request — so a three-option question runs in 64 ms where a
-fifty-nine-option one takes 596 ms. Weights: [`bdauzats/minicpm5-2b-decision-mlx-4bit`](https://huggingface.co/bdauzats/minicpm5-2b-decision-mlx-4bit)
-(MLX, 1.3 GB) and [`bdauzats/minicpm5-2b-decision`](https://huggingface.co/bdauzats/minicpm5-2b-decision)
+fifty-nine-option one takes 596 ms. Weights: [`usejul/minicpm5-2b-decision-mlx-4bit`](https://huggingface.co/usejul/minicpm5-2b-decision-mlx-4bit)
+(MLX, 1.3 GB) and [`usejul/minicpm5-2b-decision`](https://huggingface.co/usejul/minicpm5-2b-decision)
 (PyTorch, bf16).
 
 Two differences with the presets above: `autotune(...)` does not apply (its heads are trained on the
@@ -393,7 +393,7 @@ multimodal embedding model, built on Qwen3.5-4B and released under Apache-2.0. I
 from the inside like the presets above: it was trained to turn a text into one vector, so the text and
 each option are embedded separately and compared by cosine — the same idea as `jul`'s vector reading,
 done by a model built for it. We converted it to MLX, 4-bit and text only:
-[`bdauzats/WeMM-Embedding-4B-mlx-4bit`](https://huggingface.co/bdauzats/WeMM-Embedding-4B-mlx-4bit)
+[`usejul/WeMM-Embedding-4B-mlx-4bit`](https://huggingface.co/usejul/WeMM-Embedding-4B-mlx-4bit)
 (2.6 GB, same accuracy as the bf16 original). It is not wired into `jul` yet.
 
 **Who it is for: anyone sorting one text into labels described in words, with no labeled data.**
@@ -541,7 +541,7 @@ jul context list | show tickets | delete tickets
 jul synth questions.yaml --seeds sample.jsonl --per-option 30 --output synth.jsonl
 jul autotune tickets --questions questions.yaml --labeled labeled.jsonl
 jul models
-jul models add minicpm5-2b-decision --repo bdauzats/minicpm5-2b-decision-mlx-4bit   # a decision model
+jul models add minicpm5-2b-decision --repo usejul/minicpm5-2b-decision-mlx-4bit   # a decision model
 jul models add my-model --repo org/Some-Instruct-3B                                 # fits a preset
 jul setup --model minicpm5-2b-decision    # backend, weights and one timed decision
 jul lab ...        # the research commands of the prototype

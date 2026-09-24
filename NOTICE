@@ -11,7 +11,7 @@ This product includes work derived from, or built on, the following:
   check against.
 
 - MiniCPM5-2B (https://huggingface.co/openbmb/MiniCPM5-2B), Copyright OpenBMB, Apache License 2.0.
-  The `minicpm5-2b-decision` weights (https://huggingface.co/bdauzats/minicpm5-2b-decision) are that
+  The `minicpm5-2b-decision` weights (https://huggingface.co/usejul/minicpm5-2b-decision) are that
   model with a LoRA merged in and a pointer head, trained with Kev's code and data plus our own.
 
 The interface follows TypeSafe's public System One API. No TypeSafe or Jev code, weights or outputs
