@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JuL — Juste un LLM</title>
+<meta name="description" content="Typed decisions from a local LLM. Calibrated probabilities in 64 ms, on your own machine. No API, no tokens generated.">
+<meta property="og:title" content="JuL — Juste un LLM">
+<meta property="og:description" content="Typed decisions from a local LLM. 64 ms. 1.3 GB. Zero tokens generated. Zero bytes sent.">
+<meta name="theme-color" content="#050805">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23050805'/%3E%3Ctext x='2' y='12' font-family='monospace' font-size='11' fill='%2333ff66'%3E%3E_%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=VT323&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ph: #33ff66;          /* phosphor */
+  --ph-rgb: 51, 255, 102;
+  --bg: #050805;
+  --ink: #050805;         /* text on inverted phosphor */
+  --dim: rgba(var(--ph-rgb), .55);
+  --faint: rgba(var(--ph-rgb), .16);
+  --glow: rgba(var(--ph-rgb), .55);
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --crt: "VT323", var(--mono);
+  --fs: 15px;
+}
+:root[data-phosphor="amber"] { --ph: #ffb000; --ph-rgb: 255, 176, 0; --bg: #0a0600; --ink: #0a0600; }
+:root[data-phosphor="white"] { --ph: #e8f0ff; --ph-rgb: 232, 240, 255; --bg: #07080b; --ink: #07080b; }
+
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--faint) 1px, transparent 1.2px);
+  background-size: 6px 6px;
+  color: var(--ph);
+  font: 400 var(--fs)/1.5 var(--mono);
+  text-shadow: 0 0 3px var(--glow);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  font-variant-ligatures: none;
+}
+::selection { background: var(--ph); color: var(--ink); text-shadow: none; }
+
+/* CRT: scanlines + vignette, above everything, never clickable */
+body::before, body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 100; }
+body::before {
+  background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.28) 2px 3px);
+}
+body::after {
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(0,0,0,.6) 100%);
+  animation: flicker 6s infinite steps(1);
+}
+@keyframes flicker { 0%, 97%, 100% { opacity: 1; } 98% { opacity: .85; } }
+
+a { color: inherit; text-decoration: underline dashed 1px; text-underline-offset: 3px; }
+a:hover, a:focus-visible, button:hover, button:focus-visible { background: var(--ph); color: var(--ink); text-shadow: none; outline: none; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+h1, h2, h3, p { margin: 0; }
+pre { margin: 0; font: inherit; line-height: 1.3; }
+.dim { color: var(--dim); }
+.inv { background: var(--ph); color: var(--ink); text-shadow: none; padding: 0 .5ch; }
+.blink { animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ── menu bar ─────────────────────────────────────────────────────────── */
+.menubar {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; gap: 2ch; flex-wrap: wrap;
+  padding: 0 2ch; min-height: 2em;
+  background: var(--ph); color: var(--ink); text-shadow: none;
+  font-family: var(--crt); font-size: 1.35rem; line-height: 1.5;
+}
+.menubar a, .menubar button { color: var(--ink); text-decoration: none; padding: 0 .5ch; }
+.menubar a:hover, .menubar button:hover, .menubar a:focus-visible, .menubar button:focus-visible { background: var(--ink); color: var(--ph); }
+.menubar .brand { font-weight: 400; letter-spacing: .05em; }
+.menubar .spacer { flex: 1; }
+.menubar u { text-decoration: underline; text-underline-offset: 2px; }
+
+/* ── desktop grid ─────────────────────────────────────────────────────── */
+main {
+  max-width: 1180px; margin: 0 auto; padding: 2.5em 16px 4em;
+  display: grid; grid-template-columns: repeat(12, 1fr); gap: 2.2em 2.5ch;
+}
+.c12 { grid-column: span 12; } .c7 { grid-column: span 7; } .c6 { grid-column: span 6; }
+.c5 { grid-column: span 5; } .c4 { grid-column: span 4; } .c3 { grid-column: span 3; } .c8 { grid-column: span 8; }
+@media (max-width: 1020px) {
+  main > * { grid-column: span 12 !important; }
+  main > .stat { grid-column: span 6 !important; }
+}
+@media (max-width: 560px) {
+  :root { --fs: 13px; }
+  .menubar { gap: .5ch; padding: 0 1ch; font-size: 1.15rem; }
+  .menubar .hide-sm { display: none; }
+  main > .stat { grid-column: span 12 !important; }
+}
+
+/* ── windows, framed in box-drawing characters ────────────────────────── */
+/* Without JS a window keeps a plain CSS frame; frame() swaps it for characters. */
+.win {
+  position: relative; min-width: 0;
+  background: var(--bg);
+  border: 3px double var(--ph);
+  box-shadow: 1.2ch .9em 0 var(--faint);
+}
+.win.ascii { border: 0; }
+.w-top, .w-bot { display: flex; white-space: pre; line-height: 1; overflow: hidden; }
+.w-fill { flex: 1; min-width: 0; overflow: hidden; }
+.w-title { background: var(--ph); color: var(--ink); text-shadow: none; padding: 0 1ch; white-space: pre; }
+.w-mid { display: grid; grid-template-columns: 1ch minmax(0, 1fr) 1ch; }
+.w-side { position: relative; }
+.w-side > span { position: absolute; inset: 0; overflow: hidden; white-space: pre; line-height: .8; }
+.w-body { padding: 1em 2ch 1.1em; min-width: 0; }
+.win:not(.ascii) .w-body { padding: 1em 2ch; }
+.win.collapsed .w-mid { display: none; }
+.w-btn:hover { background: var(--ph); color: var(--ink); }
+
+.eyebrow { font-family: var(--crt); font-size: 1.3rem; color: var(--dim); letter-spacing: .04em; }
+h2.h { font-family: var(--crt); font-weight: 400; font-size: 2rem; line-height: 1.05; margin: .15em 0 .5em; }
+.scroll { overflow-x: auto; scrollbar-color: var(--ph) var(--bg); }
+
+/* ── hero ─────────────────────────────────────────────────────────────── */
+.hero { display: grid; grid-template-columns: auto 1fr; gap: 1.5em 4ch; align-items: center; }
+.logo { font-size: clamp(11px, 3.2vw, 22px); line-height: 1.05; font-weight: 700; }
+.hero h1 { font-family: var(--crt); font-weight: 400; font-size: clamp(2.3rem, 5.4vw, 4.2rem); line-height: .95; }
+.hero .tag { margin-top: .8em; max-width: 58ch; }
+.hero .tag b { font-weight: 400; background: var(--ph); color: var(--ink); text-shadow: none; padding: 0 .4ch; }
+.cta { display: flex; gap: 2ch; flex-wrap: wrap; margin-top: 1.4em; font-family: var(--crt); font-size: 1.5rem; }
+.cta a { text-decoration: none; border: 1px solid var(--ph); padding: 0 1.2ch; }
+.cta a.primary { background: var(--ph); color: var(--ink); text-shadow: none; }
+.cta a.primary:hover { background: var(--bg); color: var(--ph); }
+.hero-foot { grid-column: 1 / -1; color: var(--dim); }
+@media (max-width: 760px) { .hero { grid-template-columns: 1fr; } }
+
+/* ── stat windows ─────────────────────────────────────────────────────── */
+.stat .big { font-family: var(--crt); font-size: clamp(3rem, 6vw, 4.6rem); line-height: .9; }
+.stat .big small { font-size: .45em; margin-left: .3ch; }
+.stat .what { margin-top: .4em; }
+.stat .meter { margin-top: .5em; color: var(--dim); white-space: pre; overflow: hidden; }
+
+/* ── terminal ─────────────────────────────────────────────────────────── */
+.term { min-height: 24em; white-space: pre-wrap; word-break: break-word; line-height: 1.35; }
+.term .cmd::before { content: "C:\\JUL> "; color: var(--dim); }
+.term .ok { color: var(--dim); }
+.term-bar { display: flex; justify-content: space-between; gap: 2ch; flex-wrap: wrap; margin-top: .8em; color: var(--dim); }
+
+/* ── lists, tables ────────────────────────────────────────────────────── */
+ul.dos { list-style: none; margin: 0; padding: 0; display: grid; gap: .75em; }
+ul.dos li { display: grid; grid-template-columns: 3ch 1fr; }
+ul.dos li::before { content: "»"; }
+ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shadow: none; padding: 0 .4ch; }
+.note { color: var(--dim); margin-top: 1em; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 1em 3ch; }
+@media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
+
+/* ── agent prompt ─────────────────────────────────────────────────────── */
+.prompt { margin-top: 1em; padding: .8em 1.5ch; border: 1px dashed var(--dim); white-space: pre-wrap; word-break: break-word; font-size: .9em; max-height: 22em; overflow-y: auto; }
+#copy-prompt { color: var(--ph); white-space: nowrap; }
+
+/* ── glider ───────────────────────────────────────────────────────────── */
+.life { line-height: 1; letter-spacing: .1ch; }
+
+/* ── boot screen ──────────────────────────────────────────────────────── */
+#boot {
+  position: fixed; inset: 0; z-index: 90; background: var(--bg);
+  padding: 2em 3ch; font-family: var(--crt); font-size: clamp(1.1rem, 2.4vw, 1.6rem); line-height: 1.25;
+  white-space: pre-wrap; cursor: pointer;
+}
+#boot .skip { position: absolute; right: 3ch; bottom: 1.5em; color: var(--dim); }
+
+/* ── keyboard: the active window gets a double frame (see setActive) ──── */
+.win { outline: none; }
+.win.active .w-title::after { content: "▌"; animation: blink 1s steps(1) infinite; margin-left: .5ch; }
+
+/* ── modals ───────────────────────────────────────────────────────────── */
+.modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.72); }
+.modal[hidden] { display: none; }
+.modal > .win { position: relative; z-index: 1; max-width: 100%; box-shadow: 1.2ch .9em 0 var(--faint); }
+.modal pre { overflow-x: auto; }
+.rain { position: absolute; inset: 0; overflow: hidden; color: var(--dim); line-height: 1.1; pointer-events: none; }
+
+/* ── unlocked phosphor ────────────────────────────────────────────────── */
+:root[data-phosphor="rgb"] main, :root[data-phosphor="rgb"] .menubar, :root[data-phosphor="rgb"] .modal { animation: hue 5s linear infinite; }
+@keyframes hue { to { filter: hue-rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  body::after, .blink, .win.active .w-title::after { animation: none; }
+  :root[data-phosphor="rgb"] main, :root[data-phosphor="rgb"] .menubar, :root[data-phosphor="rgb"] .modal { animation: none; filter: hue-rotate(160deg); }
+}
+</style>
+</head>
+<body>
+
+<div id="boot" hidden aria-hidden="true"><span id="boot-text"></span><span class="blink">█</span><span class="skip">press any key</span></div>
+
+<div class="modal" id="help" hidden role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+  <section class="win" data-title="HELP.HLP">
+<pre>  J / K ........ next / previous window
+  Tab .......... walk windows and links
+  Enter ........ fold / unfold the window
+  I B H ........ Install · Bench · How
+  G ............ GitHub
+  P ............ change phosphor
+  R ............ run the demo again
+  C ............ copy the install prompt
+  ? ............ this help
+  Esc .......... close
+
+  <span class="dim">psst. try the old code.</span></pre>
+  </section>
+</div>
+
+<div class="modal" id="cheat" hidden role="dialog" aria-modal="true" aria-label="Cheat code accepted">
+  <pre class="rain" id="rain" aria-hidden="true"></pre>
+  <section class="win" data-title="CHEAT.EXE">
+<pre>  ↑ ↑ ↓ ↓ ← → ← → B A
+
+  CHEAT CODE ACCEPTED
+  ───────────────────────────────
+  +30 LIVES ............... OK
+  output_tokens ........... still 0
+  latency ................. still 64 ms
+                            (we checked)
+  UNLOCKED ................ PHOSPHOR:RGB
+
+  <span class="dim">[ Esc ] back to work</span></pre>
+  </section>
+</div>
+
+<nav class="menubar" aria-label="Main">
+  <span class="brand">▓ JuL-DOS 0.1</span>
+  <a href="#install"><u>I</u>nstall</a>
+  <a href="#bench"><u>B</u>ench</a>
+  <a href="#how"><u>H</u>ow</a>
+  <a href="https://github.com/bdauzats/jul"><u>G</u>itHub</a>
+  <span class="spacer"></span>
+  <button id="keys" type="button" title="Keyboard shortcuts" aria-haspopup="dialog">[?] Keys</button>
+  <button id="phosphor" type="button" title="Change phosphor">PHOSPHOR:<span id="ph-name">GRN</span></button>
+  <span class="hide-sm" id="clock" aria-hidden="true">00:00:00</span>
+</nav>
+
+<main>
+
+  <!-- ── HERO ───────────────────────────────────────────────── -->
+  <section class="win c12" data-title="C:\JUL\README.TXT" id="top">
+    <div class="hero">
+<pre class="logo" aria-label="JuL">     ██╗         ██╗
+     ██║         ██║
+     ██║██╗   ██╗██║
+██   ██║██║   ██║██║
+╚█████╔╝╚██████╔╝███████╗
+ ╚════╝  ╚═════╝ ╚══════╝</pre>
+      <div>
+        <p class="eyebrow">JUSTE UN LLM · v0.1 · APACHE-2.0</p>
+        <h1>Decisions, not chat.<br>On your machine.</h1>
+        <p class="tag">
+          Ask a typed question, get a <b>calibrated probability per option</b>.
+          A 2B model read once, stopped one step before its first word:
+          no API, no tokens generated, no data leaving the box.
+          Same calls as Jev's SDK: change one import.
+        </p>
+        <div class="cta">
+          <a class="primary" href="#install">[ INSTALL ]</a>
+          <a href="https://github.com/bdauzats/jul">[ SOURCE ]</a>
+          <a href="#bench">[ NUMBERS ]</a>
+        </div>
+      </div>
+      <p class="hero-foot">It has nothing to say, and it says it in 64 milliseconds.<span class="blink">_</span></p>
+    </div>
+  </section>
+
+  <!-- ── STATS ──────────────────────────────────────────────── -->
+  <section class="win c3 stat" data-title="LATENCY.EXE">
+    <p class="big">64<small>ms</small></p>
+    <p class="what">per decision, p50</p>
+    <p class="meter">[███░░░░░░░░░░░]</p>
+    <p class="dim">MiniCPM5-2B on an M4 Pro. Put it in a hot path.</p>
+  </section>
+  <section class="win c3 stat" data-title="WEIGHT.SYS">
+    <p class="big">1.3<small>GB</small></p>
+    <p class="what">on disk, 4-bit</p>
+    <p class="meter">[██░░░░░░░░░░░░]</p>
+    <p class="dim">2B parameters. Fits beside your IDE, your browser and your 400 tabs.</p>
+  </section>
+  <section class="win c3 stat" data-title="TOKENS.OUT">
+    <p class="big">0</p>
+    <p class="what">tokens generated</p>
+    <p class="meter">[░░░░░░░░░░░░░░]</p>
+    <p class="dim">The answer is read from the model's hidden state. Nothing to sample, nothing to parse.</p>
+  </section>
+  <section class="win c3 stat" data-title="NETWORK.DRV">
+    <p class="big">0<small>bytes</small></p>
+    <p class="what">sent anywhere</p>
+    <p class="meter">[░░░░░░░░░░░░░░]</p>
+    <p class="dim">Works offline, on a plane, behind any firewall. No key, no quota, no bill per call.</p>
+  </section>
+
+  <!-- ── TERMINAL DEMO ──────────────────────────────────────── -->
+  <section class="win c7" data-title="COMMAND.COM">
+    <div class="term" id="term" aria-live="off"></div>
+    <div class="term-bar">
+      <span>Illustrative output · usage and latency as the CLI prints them.</span>
+      <button type="button" id="replay">[ ↻ RUN AGAIN ]</button>
+    </div>
+  </section>
+
+  <!-- ── LATENCY CHART ──────────────────────────────────────── -->
+  <section class="win c5" data-title="LATENCY.CHT">
+    <p class="eyebrow">P50 PER DECISION, JEV BENCH</p>
+    <h2 class="h">Faster than a round trip.</h2>
+<pre class="scroll" aria-label="Latency chart: jul 2B 64 ms, WeMM-4B 96 ms, GLiNER2.5 128 ms, jul 2B decision 217 ms, Jev hosted 246 ms, jul 9B 273 ms">jul 2B        █████                 64 ms
+WeMM-4B ²     ███████               96 ms
+GLiNER2.5     █████████            128 ms
+jul 2B-dec.   ████████████████     217 ms
+Jev (hosted)  ██████████████████   246 ms
+jul 9B        ████████████████████ 273 ms
+              ├────┼────┼────┼────┤
+              0   70  140  210  280</pre>
+    <p class="note">jul on an M4 Pro, 24 GB, mains power. Jev is an API: its figure includes the network. GLiNER on CPU. ² WeMM: measured, coming to jul. Your hardware will differ, and it will still be your hardware.</p>
+  </section>
+
+  <!-- ── HOW ────────────────────────────────────────────────── -->
+  <section class="win c12" data-title="HOW.DOC" id="how">
+    <p class="eyebrow">HOW IT ANSWERS</p>
+    <h2 class="h">Read the mind, skip the mouth.</h2>
+    <div class="two">
+<pre class="scroll" aria-label="Diagram: the state goes through MiniCPM5-2B up to layer 39, its hidden state is compared by cosine to cached option vectors, then softmax gives calibrated probabilities">STATE "I was charged twice"
+               │
+┌──────────────┴──────────────┐
+│ MiniCPM5-2B   (your laptop) │
+│ layers 1 → 39, then stop.   │
+└──────────────┬──────────────┘
+               │ hidden state
+               ▼
+      cosine(state, option) ◄── options
+               │         (encoded once,
+               ▼              cached)
+       softmax(cos / τ)
+               │
+               ▼
+billing    ████████████████  0.88
+technical  ██                0.11
+sales      ▏                 0.01</pre>
+      <div>
+        <ul class="dos">
+          <li><span>The state and each option pass through the same prompt. The answer is the option whose hidden vector sits closest.</span></li>
+          <li><span>Everything that does not depend on the state (prompt prefix, option vectors, center) is computed <b>once</b>. A call only pays for its own tokens.</span></li>
+          <li><span>The forward pass stops at the last layer it reads. No decoding loop, no sampling, no JSON to repair.</span></li>
+          <li><span>A temperature fitted on dev sets turns cosines into probabilities you can threshold on.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── WHY LOCAL ──────────────────────────────────────────── -->
+  <section class="win c5" data-title="MANIFEST.TXT">
+    <p class="eyebrow">WHY LOCAL</p>
+    <h2 class="h">Small model. Short answer. Your box.</h2>
+    <ul class="dos">
+      <li><span><b>Private by construction.</b> Tickets, emails, medical notes: the text never leaves the process.</span></li>
+      <li><span><b>Latency you can loop over.</b> 64 ms is cheap enough for every row, every request, every keystroke.</span></li>
+      <li><span><b>No meter running.</b> No API key, no rate limit, no invoice. Ten thousand calls cost electricity.</span></li>
+      <li><span><b>Runs anywhere.</b> MLX on Apple Silicon, PyTorch on CUDA, CPU or MPS.</span></li>
+      <li><span><b>Your model.</b> Swap the backbone, register your own with one command, fine-tune the head on your data.</span></li>
+    </ul>
+  </section>
+
+  <!-- ── DROP-IN ────────────────────────────────────────────── -->
+  <section class="win c7" data-title="DROPIN.PY">
+    <p class="eyebrow">ALREADY ON JEV?</p>
+    <h2 class="h">Change one import.</h2>
+<pre class="scroll"><span class="dim">- from typesafe_sdk import TypeSafeClient, Choice, Noul, Score</span>
++ from jul import TypeSafeClient, Choice, Noul, Score
+
+client = TypeSafeClient(model="minicpm5-2b")
+
+r = client.system_one(
+    state={"ticket": "I was charged twice this month."},
+    questions={
+        "team": Choice(
+            instructions="Which team should handle this?",
+            criteria={"billing":   "payments, refunds",
+                      "technical": "bugs, errors",
+                      "sales":     "pricing, plans"}),
+        "is_bug": Noul(instructions="Is it a bug report?"),
+    },
+)
+r.choices["team"].choice         <span class="dim"># "billing"</span>
+r.choices["team"].probabilities  <span class="dim"># {"billing": 0.88, ...}</span></pre>
+    <p class="note">Same imports, same calls, same response shapes. Arguments that only mean something remotely are accepted and ignored.</p>
+  </section>
+
+  <!-- ── BENCH ──────────────────────────────────────────────── -->
+  <section class="win c12" data-title="BENCH.TXT" id="bench">
+    <p class="eyebrow">ZERO-SHOT · JEV'S PUBLISHED BENCHMARK · 300 EXAMPLES</p>
+    <h2 class="h">The numbers, read honestly.</h2>
+<pre class="scroll" aria-label="Benchmark table">MODEL                        AG NEWS  BANKING77  EMOTION   MEAN   ECE ↓    P50
+───────────────────────────────────────────────────────────────────────────────
+WeMM-Embedding-4B, 4-bit ²     0.84      0.90      0.78   0.840   0.111   96 ms
+jul minicpm5-2b-decision ¹     0.91      0.79      0.69   0.796   0.133  217 ms
+Jev (published)                0.91      0.87      0.48   0.753   0.156  246 ms
+jul qwen3.5-9b                 0.79      0.74      0.45   0.660   0.175  273 ms
+jul minicpm5-2b                0.80      0.59      0.46   0.617   0.113   64 ms
+GLiNER2.5 (published)          0.70      0.61      0.44   0.583   0.101  128 ms</pre>
+    <div class="two" style="margin-top:1.2em">
+      <ul class="dos">
+        <li><span>¹ The decision model trained on these three tasks' training splits (the bench uses their test splits). Jev's training data is unpublished. On six sources neither model trained on, Jev leads: 0.857 against 0.721.</span></li>
+        <li><span>² Tencent's embedding model, converted by us to MLX 4-bit (2.6 GB), <b>not wired into jul yet</b>. Banking77 and Emotion are in MTEB, which embedding models train on; on AG News it is 7 points behind Jev.</span></li>
+        <li><span>Read without any training, jul beats GLiNER and is <b>better calibrated than Jev</b> nearly everywhere.</span></li>
+      </ul>
+      <ul class="dos">
+        <li><span>With 1,000 labeled examples, the 2B model reaches <b>0.757 at 65 ms</b>: Jev's level at a quarter of its latency.</span></li>
+        <li><span>100 rows per dataset: ±5 points per cell, ±3 on the mean. If a bag of words solves your task, use it: <a href="https://github.com/bdauzats/jul#the-baseline-worth-remembering">we measured that too</a>.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── INSTALL ────────────────────────────────────────────── -->
+  <section class="win c6" data-title="INSTALL.BAT" id="install">
+    <p class="eyebrow">THREE LINES</p>
+    <h2 class="h">Up in one coffee.</h2>
+<pre class="scroll">C:\> git clone https://github.com/bdauzats/jul
+C:\> cd jul && pip install -e .
+C:\> jul setup
+<span class="dim">  backend ....... mlx (Apple Silicon)
+  model ......... minicpm5-2b, downloaded once
+  check ......... 1 decision OK</span></pre>
+    <p style="margin-top:1em"><code>jul setup</code> picks the backend (MLX on Apple Silicon, PyTorch elsewhere), installs it if missing, downloads the model once and runs one real decision.</p>
+    <p class="note">No terminal handy? <a href="#agent">Let an agent do it →</a></p>
+  </section>
+
+  <!-- ── AGENT INSTALL ──────────────────────────────────────── -->
+  <section class="win c6" data-title="AGENT.PRM" id="agent">
+    <p class="eyebrow">OR FROM A PROMPT</p>
+    <h2 class="h">Let a big LLM install the small one.</h2>
+    <p>Paste this into Claude Code, Codex, or any agent that has a shell.</p>
+<pre class="prompt" id="agent-prompt">Install jul (https://github.com/bdauzats/jul), a local library that answers typed questions
+with a 2B model, and check that it works on this machine.
+
+1. Clone it (or use the checkout I am in) and create a virtualenv with Python &gt;= 3.10 inside it.
+2. In that venv: pip install -e .   then   jul setup
+   jul setup picks the backend (MLX on Apple Silicon, else PyTorch), installs it, downloads
+   MiniCPM5-2B (a few GB) and runs one test decision.
+3. Then run:
+   jul ask choice "Which team should handle this ticket?" -o billing:"payments, invoices" -o technical:"bugs, errors" --state "I was charged twice"
+   and show me the JSON.
+
+Do not use sudo and do not install anything outside the venv. If a step fails, show me the error and
+what you suggest before trying something else. At the end, tell me in two lines: the backend, the
+latency per decision, and the answer to the ticket.</pre>
+    <div class="term-bar">
+      <span>A model that writes essays, installing one that answers in a single word. Neither of them minds.</span>
+      <button type="button" id="copy-prompt">[ <u>C</u>OPY PROMPT ]</button>
+    </div>
+  </section>
+
+
+  <!-- ── FOOTER ── -->
+  <section class="win c8" data-title="ABOUT.TXT">
+    <p>JuL, <i>Juste un LLM</i>. A headless decision runtime for local models. Apache-2.0.</p>
+    <p class="note">
+      <a href="https://github.com/bdauzats/jul">github.com/bdauzats/jul</a> ·
+      <a href="https://huggingface.co/bdauzats/minicpm5-2b-decision-mlx-4bit">weights on Hugging Face</a> ·
+      Not affiliated with TypeSafe AI or Jev.
+    </p>
+    <p class="note">C:\JUL&gt; exit<span class="blink">_</span></p>
+  </section>
+  <section class="win c4" data-title="GLIDER.EXE">
+    <pre class="life" id="life" aria-hidden="true"></pre>
+    <p class="note" style="margin-top:.6em">Game of Life. Also runs locally.</p>
+  </section>
+
+</main>
+
+<script>
+(() => {
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    sget(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+    sset(k, v) { try { sessionStorage.setItem(k, v); } catch {} },
+  };
+
+  // ── windows: redraw each frame in box-drawing characters ──────────────
+  const H = "─".repeat(600), V = "│\n".repeat(400);
+  document.querySelectorAll(".win").forEach(win => {
+    const body = document.createElement("div");
+    body.className = "w-body";
+    while (win.firstChild) body.appendChild(win.firstChild);
+    const title = win.dataset.title || "";
+    win.innerHTML =
+      `<div class="w-top" aria-hidden="true"><span>┌─</span><button class="w-btn" type="button" tabindex="-1">[■]</button>` +
+      `<span>─</span><span class="w-title"></span><span class="w-fill">${H}</span><span>─[▼][▲]─┐</span></div>` +
+      `<div class="w-mid"><span class="w-side" aria-hidden="true"><span>${V}</span></span>` +
+      `<span class="w-side" aria-hidden="true"><span>${V}</span></span></div>` +
+      `<div class="w-bot" aria-hidden="true"><span>└</span><span class="w-fill">${H}</span><span>┘</span></div>`;
+    win.querySelector(".w-title").textContent = title;
+    const mid = win.querySelector(".w-mid");
+    mid.insertBefore(body, mid.lastElementChild);
+    win.querySelector(".w-btn").addEventListener("click", () => win.classList.toggle("collapsed"));
+    win.classList.add("ascii");
+    win.tabIndex = 0;
+    win.setAttribute("role", "region");
+    win.setAttribute("aria-label", title);
+  });
+
+  // ── ASCII blocks: shrink the font until the drawing fits its window ────
+  const fitAll = () => document.querySelectorAll("pre.scroll").forEach(pre => {
+    pre.style.fontSize = "";
+    const base = parseFloat(getComputedStyle(pre).fontSize);
+    if (pre.scrollWidth > pre.clientWidth)
+      pre.style.fontSize = Math.max(9, Math.floor(base * pre.clientWidth / pre.scrollWidth * 10) / 10) + "px";
+  });
+  fitAll();
+  addEventListener("resize", fitAll);
+  document.fonts && document.fonts.ready.then(fitAll);
+
+  // ── phosphor ──────────────────────────────────────────────────────────
+  const phosphors = [["green", "GRN"], ["amber", "AMB"], ["white", "WHT"]];
+  const unlockRgb = () => { if (!phosphors.some(p => p[0] === "rgb")) phosphors.push(["rgb", "RGB"]); };
+  if (store.get("jul-konami")) unlockRgb();
+  let ph = Math.max(0, phosphors.findIndex(p => p[0] === store.get("jul-phosphor")));
+  const applyPh = () => {
+    document.documentElement.dataset.phosphor = phosphors[ph][0];
+    document.getElementById("ph-name").textContent = phosphors[ph][1];
+    document.querySelector('meta[name="theme-color"]').content = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim();
+  };
+  applyPh();
+  const nextPh = () => { ph = (ph + 1) % phosphors.length; store.set("jul-phosphor", phosphors[ph][0]); applyPh(); };
+  document.getElementById("phosphor").addEventListener("click", nextPh);
+
+  // ── clock ─────────────────────────────────────────────────────────────
+  const clock = document.getElementById("clock");
+  const tick = () => { clock.textContent = new Date().toTimeString().slice(0, 8); };
+  tick(); setInterval(tick, 1000);
+
+  // ── boot screen, once per session ─────────────────────────────────────
+  const boot = document.getElementById("boot");
+  const bootLines = [
+    "JuL BIOS v0.1   (C) 2026 bdauzats",
+    "",
+    "CPU  : whatever you have ............ OK",
+    "RAM  : 1.3 GB needed ................ OK",
+    "GPU  : Metal / CUDA / CPU ........... OK",
+    "NET  : not required ................. SKIP",
+    "API KEY : not required .............. SKIP",
+    "",
+    "Loading MINICPM5-2B.SYS  ",
+  ];
+  const bar = n => "[" + "█".repeat(n) + "░".repeat(20 - n) + "] " + String(n * 5).padStart(3) + "%";
+  const finishBoot = () => { boot.hidden = true; store.sset("jul-booted", "1"); startTerm(); };
+  if (!reduced && !store.sget("jul-booted")) {
+    boot.hidden = false;
+    const out = document.getElementById("boot-text");
+    let i = 0, n = 0, done = false;
+    const end = () => { if (done) return; done = true; removeEventListener("keydown", end); boot.removeEventListener("click", end); finishBoot(); };
+    addEventListener("keydown", end); boot.addEventListener("click", end);
+    const step = () => {
+      if (done) return;
+      if (i < bootLines.length) { out.textContent += bootLines[i++] + (i < bootLines.length ? "\n" : ""); return setTimeout(step, 110); }
+      if (n <= 20) { out.textContent = bootLines.join("\n") + bar(n++); return setTimeout(step, 35); }
+      out.textContent += "\n\nTokens to generate: 0\n\nC:\\> jul ";
+      setTimeout(end, 700);
+    };
+    step();
+  } else {
+    startTerm();
+  }
+
+  let replayTerm = () => {};
+
+  // ── copy the agent prompt ─────────────────────────────────────────────
+  const copyBtn = document.getElementById("copy-prompt");
+  const copyPrompt = async () => {
+    const text = document.getElementById("agent-prompt").textContent;
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch {
+      const r = document.createRange(); r.selectNodeContents(document.getElementById("agent-prompt"));
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      try { ok = document.execCommand("copy"); } catch {}
+    }
+    copyBtn.textContent = ok ? "[ COPIED ✓ ]" : "[ SELECTED: ⌘C ]";
+    setTimeout(() => { copyBtn.innerHTML = "[ <u>C</u>OPY PROMPT ]"; }, 1800);
+  };
+  copyBtn.addEventListener("click", copyPrompt);
+
+  // ── terminal demo ─────────────────────────────────────────────────────
+  function startTerm() {
+    const term = document.getElementById("term");
+    const script = [
+      ["cmd", 'jul ask choice "Which team should handle this ticket?" -o billing:"payments, invoices" -o technical:"bugs, errors" -o sales:"pricing, plans" --state "I was charged twice"'],
+      ["out", `{
+  "model": "minicpm5-2b",
+  "usage": {"input_tokens": 24, "output_tokens": 0, "total_tokens": 24},
+  "answers": {
+    "choice": {
+      "choice": "billing",
+      "probabilities": {"billing": 0.88, "technical": 0.11, "sales": 0.01},
+      "confidence": 0.88
+    }
+  },
+  "latency_ms": 64.2
+}`],
+      ["ok", "\n# 0 tokens generated · 0 bytes sent · 0 ¢\n"],
+      ["cmd", ""],
+    ];
+    let timer = null;
+    const run = () => {
+      clearTimeout(timer);
+      term.textContent = "";
+      if (reduced) {
+        script.forEach(([k, t]) => { const el = document.createElement("div"); el.className = k; el.textContent = t; term.appendChild(el); });
+        return;
+      }
+      let li = 0;
+      const next = () => {
+        if (li >= script.length) return;
+        const [kind, text] = script[li++];
+        const el = document.createElement("div"); el.className = kind; term.appendChild(el);
+        if (kind !== "cmd") { el.textContent = text; timer = setTimeout(next, 250); return; }
+        const cur = document.createElement("span"); cur.className = "blink"; cur.textContent = "█";
+        el.appendChild(cur);
+        let c = 0;
+        const type = () => {
+          if (c < text.length) { cur.before(text[c++]); timer = setTimeout(type, 12 + Math.random() * 28); }
+          else if (li < script.length) { timer = setTimeout(() => { cur.remove(); next(); }, 420); }
+        };
+        type();
+      };
+      next();
+    };
+    document.getElementById("replay").onclick = run;
+    replayTerm = run;
+    const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); run(); } }, { threshold: .3 });
+    io.observe(term);
+  }
+
+  // ── keyboard: active window, shortcuts, modals ──────────────────────
+  const wins = [...document.querySelectorAll("main > .win")];
+  const SINGLE = "┌┐└┘─│", DOUBLE = "╔╗╚╝═║";
+  const restyle = (win, from, to) => win.querySelectorAll(".w-top > span:not(.w-title), .w-bot > span, .w-side > span")
+    .forEach(el => { el.textContent = el.textContent.replace(/[┌┐└┘─│╔╗╚╝═║]/g, c => to[from.indexOf(c)] ?? c); });
+  let active = null;
+  const setActive = win => {
+    if (win === active) return;
+    if (active) { active.classList.remove("active"); restyle(active, DOUBLE, SINGLE); }
+    active = win;
+    if (win) { win.classList.add("active"); restyle(win, SINGLE, DOUBLE); }
+  };
+  wins.forEach(w => w.addEventListener("focusin", () => setActive(w)));
+  document.addEventListener("focusin", e => { if (!e.target.closest || !e.target.closest("main > .win")) setActive(null); });
+  const go = d => {
+    const i = active ? wins.indexOf(active) : (d > 0 ? -1 : wins.length);
+    const w = wins[(i + d + wins.length) % wins.length];
+    w.focus({ preventScroll: true });
+    w.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+  };
+
+  let lastFocus = null;
+  const openModal = m => { lastFocus = document.activeElement; m.hidden = false; m.querySelector(".win").focus(); };
+  const closeModals = () => {
+    let was = false;
+    document.querySelectorAll(".modal").forEach(m => { if (!m.hidden) { m.hidden = true; was = true; } });
+    if (was && lastFocus && lastFocus.focus) lastFocus.focus();
+    stopRain();
+  };
+  const help = document.getElementById("help"), cheat = document.getElementById("cheat");
+  document.getElementById("keys").addEventListener("click", () => openModal(help));
+  document.querySelectorAll(".modal").forEach(m => m.addEventListener("click", e => { if (e.target === m) closeModals(); }));
+
+  // ↑ ↑ ↓ ↓ ← → ← → B A
+  const KONAMI = ["arrowup", "arrowup", "arrowdown", "arrowdown", "arrowleft", "arrowright", "arrowleft", "arrowright", "b", "a"];
+  let kpos = 0, rainTimer = null;
+  const stopRain = () => { clearInterval(rainTimer); rainTimer = null; };
+  const startRain = () => {
+    const rain = document.getElementById("rain");
+    const cols = Math.ceil(innerWidth / 8), rows = Math.ceil(innerHeight / 16);
+    const glyphs = "01░▒▓█│─┼JuL";
+    const drops = Array.from({ length: cols }, () => Math.floor(Math.random() * -rows));
+    const frame = () => {
+      const grid = Array.from({ length: rows }, () => Array(cols).fill(" "));
+      drops.forEach((y, x) => {
+        for (let t = 0; t < 8; t++) if (y - t >= 0 && y - t < rows) grid[y - t][x] = glyphs[(x + y + t) % glyphs.length];
+        drops[x] = y > rows + 8 ? Math.floor(Math.random() * -rows / 2) : y + 1;
+      });
+      rain.textContent = grid.map(r => r.join("")).join("\n");
+    };
+    frame();
+    if (!reduced) rainTimer = setInterval(frame, 70);
+  };
+  const konami = () => {
+    store.set("jul-konami", "1");
+    unlockRgb();
+    ph = phosphors.findIndex(p => p[0] === "rgb"); store.set("jul-phosphor", "rgb"); applyPh();
+    openModal(cheat);
+    startRain();
+  };
+
+  addEventListener("keydown", e => {
+    if (!boot.hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+
+    // the code runs before anything else, so its B does not jump to Bench
+    kpos = k === KONAMI[kpos] ? kpos + 1 : (k === KONAMI[0] ? 1 : 0);
+    if (kpos === KONAMI.length) { kpos = 0; e.preventDefault(); closeModals(); konami(); return; }
+    if (kpos >= 8) return;
+
+    if (k === "escape") { closeModals(); return; }
+    const modalOpen = [...document.querySelectorAll(".modal")].some(m => !m.hidden);
+    if (modalOpen) return;
+    if (e.target.matches && e.target.matches("input, textarea, select, [contenteditable]")) return;
+
+    if (k === "enter" && active && e.target === active) { e.preventDefault(); active.classList.toggle("collapsed"); return; }
+    const jump = id => { const w = document.getElementById(id); w.focus({ preventScroll: true }); w.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" }); };
+    const actions = {
+      j: () => go(1), k: () => go(-1),
+      i: () => jump("install"), b: () => jump("bench"), h: () => jump("how"),
+      g: () => { location.href = "https://github.com/bdauzats/jul"; },
+      p: nextPh,
+      r: () => { const t = document.getElementById("term").closest(".win"); t.focus({ preventScroll: true }); t.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "center" }); replayTerm(); },
+      c: () => { jump("agent"); copyPrompt(); },
+      "?": () => openModal(help),
+    };
+    if (actions[k]) { e.preventDefault(); actions[k](); }
+  });
+
+  // ── glider ────────────────────────────────────────────────────────────
+  const W = 22, Hh = 9, life = document.getElementById("life");
+  let g = Array.from({ length: Hh }, () => Array(W).fill(0));
+  [[0, 1], [1, 2], [2, 0], [2, 1], [2, 2]].forEach(([y, x]) => g[y][x] = 1);
+  const draw = () => { life.textContent = g.map(r => r.map(v => v ? "█" : "·").join("")).join("\n"); };
+  const stepLife = () => {
+    g = g.map((r, y) => r.map((v, x) => {
+      let n = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++)
+        if (dy || dx) n += g[(y + dy + Hh) % Hh][(x + dx + W) % W];
+      return n === 3 || (v && n === 2) ? 1 : 0;
+    }));
+    draw();
+  };
+  draw();
+  if (!reduced) setInterval(stepLife, 220);
+})();
+</script>
+</body>
+</html>
