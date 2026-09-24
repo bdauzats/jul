@@ -19,17 +19,19 @@ And when it is off-key, there is always `client.autotune(...)` — or `jul autot
 Pick a backend: MLX on Apple Silicon, PyTorch (transformers) anywhere else — CUDA, CPU, or MPS.
 
 ```bash
-pip install -e ".[mlx]"       # Apple Silicon
-pip install -e ".[torch]"     # Linux / Windows / any GPU
-# add [yaml] for YAML question files, [dev] for the tests
+pip install "jul[mlx]"        # Apple Silicon
+pip install "jul[torch]"      # Linux / Windows / any GPU
+# add [yaml] for YAML question files
 ```
+
+From a checkout, to work on jul itself: `pip install -e ".[dev]"`.
 
 Or let `jul setup` do the rest: it picks the backend (MLX on Apple Silicon, else PyTorch), installs
 it if missing, downloads MiniCPM5-2B once, and checks one real decision. Running it again redoes only
 the check.
 
 ```bash
-pip install -e .
+pip install jul
 jul setup                          # --backend torch, --model qwen3.5-9b, --no-install, --no-check
 ```
 
@@ -37,11 +39,11 @@ Or have a big LLM install the small one. Paste this into Claude Code, Codex, or 
 a shell:
 
 ```text
-Install jul (https://github.com/bdauzats/jul), a local library that answers typed questions
+Install jul (https://pypi.org/project/jul/), a local library that answers typed questions
 with a 2B model, and check that it works on this machine.
 
-1. Clone it (or use the checkout I am in) and create a virtualenv with Python >= 3.10 inside it.
-2. In that venv: pip install -e .   then   jul setup
+1. Create a virtualenv with Python >= 3.10.
+2. In that venv: pip install jul   then   jul setup
    jul setup picks the backend (MLX on Apple Silicon, else PyTorch), installs it, downloads
    MiniCPM5-2B (a few GB) and runs one test decision.
 3. Then run:
@@ -119,7 +121,7 @@ the Jev benchmark):
    `--model <name>` on that backend. `jul models` lists it with what was measured.
 
 The calibration data is downloaded once from BTZSC into `~/.jul/calibration-data` (needs
-`pip install -e ".[calibrate]"`), or taken from `--data <dir>`. The dev accuracy it reports comes
+`pip install "jul[calibrate]"`), or taken from `--data <dir>`. The dev accuracy it reports comes
 with its standard error (±3.5 points at n=200): it orients, it does not rank close models. Measure
 on the Jev bench separately, once.
 
