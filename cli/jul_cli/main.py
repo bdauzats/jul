@@ -335,7 +335,7 @@ def cmd_lab(a):
 # --- parser -------------------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="jul", description="Juste Un LLM - local typed decisions.")
+    p = argparse.ArgumentParser(prog="jul", description="Just a LLM - local typed decisions.")
     model_kw = dict(default=None, help=f"preset: {', '.join(PRESETS)} (aliases: {', '.join(ALIASES)})")
     backend_kw = dict(choices=list(BACKENDS), default=None,
                       help="default: $JUL_BACKEND, else mlx on Apple Silicon, else torch")

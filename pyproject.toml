@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "jul"
 version = "0.1.0"
-description = "Juste Un LLM - local typed decisions with the interface of the TypeSafe (Jev) SDK"
+description = "Just a LLM - local typed decisions with the interface of the TypeSafe (Jev) SDK"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "Apache-2.0"
