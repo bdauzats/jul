@@ -78,7 +78,9 @@ The research code under `jul.lab` still trains its heads with MLX.
 
 No weights are committed here. `jul setup` downloads them from the Hugging Face Hub into
 `~/.cache/huggingface`, once. The CLI asks for it when they are missing; the Python API downloads them
-on the first call.
+on the first call. That download is the only moment JuL needs the network, and a decision never does.
+The flows to open, what goes over them, and how to run with them closed are in
+[docs/NETWORK.md](docs/NETWORK.md), pinned by `tests/test_network.py`.
 
 | Preset        | MLX repository                                                                          | On disk | PyTorch repository                                                  |
 | ------------- | --------------------------------------------------------------------------------------- | ------: | ------------------------------------------------------------------- |
@@ -615,7 +617,7 @@ jul/
 
 ```bash
 pytest tests                       # 86 tests, under a second, no model and no data
-JUL_SLOW=1 pytest tests            # all 112, downloads and loads both presets (~2 min)
+JUL_SLOW=1 pytest tests            # all 118, downloads and loads both presets (~2 min)
 JUL_SLOW=1 pytest tests -m slow    # only the 26 that need a model
 JUL_SLOW=1 pytest tests -m torch   # MLX against PyTorch on the same weights
 ```
