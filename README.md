@@ -145,8 +145,8 @@ continues from it, so questions never see each other.
 
 The state is paid once per call: a ticket with four questions (two `Choice`, a `Noul` and a `Score`)
 answers in **180 ms** on an M4 Pro, against 65 ms for the first question alone. What costs is the
-options — they are re-read on every request — so a three-option question runs in 65 ms where a
-fifty-nine-option one takes 613 ms. Weights: [`bdauzats/minicpm5-2b-decision-mlx-4bit`](https://huggingface.co/bdauzats/minicpm5-2b-decision-mlx-4bit)
+options — they are re-read on every request — so a three-option question runs in 64 ms where a
+fifty-nine-option one takes 596 ms. Weights: [`bdauzats/minicpm5-2b-decision-mlx-4bit`](https://huggingface.co/bdauzats/minicpm5-2b-decision-mlx-4bit)
 (MLX, 1.3 GB) and [`bdauzats/minicpm5-2b-decision`](https://huggingface.co/bdauzats/minicpm5-2b-decision)
 (PyTorch, bf16).
 
@@ -283,7 +283,8 @@ Zero-shot means no example of the task at call time: every row here gets the tex
 option list, nothing else. The first two rows are models *trained* to decide, the next two are general
 LLMs read without training, and GLiNER is a trained zero-shot tagger.
 
-¹ `minicpm5-2b-decision` learned these three tasks during training, on their training splits (the
+¹ Measured on **v1.0**; the benchmark has not been read again for v1.1. `minicpm5-2b-decision` learned
+these three tasks during training, on their training splits (the
 benchmark rows come from the test splits). Jev's training data is not published, so whether it saw them
 too is unknown. On six sources neither it nor Kev ever trained on, it scores 0.721 against Jev's 0.857:
 see [the development sets](#the-decision-model-on-the-development-sets).
@@ -337,24 +338,26 @@ Cells are accuracy / ECE (lower is better) / p50 latency.
 
 | Development set      |   `minicpm5-2b` (vectors) |      `minicpm5-2b-decision` |
 | -------------------- | ------------------------: | --------------------------: |
-| FinancialPhraseBank  |   0.705 / 0.129 / 105 ms  | **0.755** / 0.127 / **65 ms** |
-| Yahoo Topics         |   0.450 / **0.045** / 203 ms | **0.610** / 0.107 / 140 ms |
-| Empathetic           |   0.345 / 0.147 / 208 ms  | **0.395** / **0.134** / 208 ms |
-| Massive (59 options) | **0.670** / **0.114** / **63 ms** |   0.665 / 0.241 / 613 ms |
-| **Mean**             |             0.542 / 0.109 |           **0.606** / 0.152 |
+| FinancialPhraseBank  |   0.705 / 0.129 / 105 ms  | **0.740** / 0.188 / **64 ms** |
+| Yahoo Topics         |   0.450 / **0.045** / 203 ms | **0.565** / 0.087 / 136 ms |
+| Empathetic           |   0.345 / 0.147 / 208 ms  | **0.460** / 0.214 / 234 ms |
+| Massive (59 options) |   0.670 / 0.114 / **63 ms** | **0.715** / **0.069** / 596 ms |
+| **Mean**             |             0.542 / 0.109 |           **0.620** / 0.140 |
 
-- **+6 points**, and the ranking holds whichever way the options are written (short names, as above, or
-  the full label sentences: 0.542 against 0.613).
+- **+8 points on the mean**, and it wins on all four sets.
 - **Latency depends on the options.** The vector method encodes them once and caches them; the decision
-  model re-reads all of them on every request. Three short options: 65 ms against 105. Fifty-nine long
-  ones: 613 ms against 63.
-- **Calibration is the one place it loses.** Its probabilities come from a temperature (1.954) fitted
-  once, on data of the sources it was trained on; the vector method's tau was fitted on these very dev
-  sets. Mean ECE 0.152 against 0.109, and Massive is the bad one at 0.241 — quantizing to 4 bits moves
-  probabilities by up to 0.3, enough to flip a borderline decision. Fit a `Context` calibration on your
-  own data if you need the probabilities themselves, not only the answer.
-- On the data it was trained on it stands between the two published Kev models (`transfer-v4`, sources
-  never trained on: 0.721, against 0.652 for Kev-0.8B and 0.797 for Kev-4B; Jev 0.857).
+  model re-reads all of them on every request. Three short options: 64 ms against 105. Fifty-nine long
+  ones: 596 ms against 63. Above a measured threshold `jul` routes a question to the vector reading
+  instead; `jul models add` finds that threshold and says what it costs.
+- **Calibration is no longer where it loses.** v1.1 ships a temperature of 1.289 fitted on one epoch's
+  weights, and mean ECE is 0.140 against the vector method's 0.109 — Massive, the bad one at 0.241 in
+  v1.0, is now the good one at 0.069. Quantizing to 4 bits still moves probabilities by up to 0.23,
+  enough to flip a borderline decision, so fit a `Context` calibration on your own data if you need the
+  probabilities themselves and not only the answer.
+- **It reads French.** On MASSIVE's parallel French and English splits, 0.710 against 0.815 — v1.0 scored
+  0.485 in French, below `jul`'s untrained vector method. That reversal is what v1.1 was trained for.
+- On sources it was never trained on (`transfer-v4`) it scores 0.739, against 0.652 for Kev-0.8B and
+  0.797 for Kev-4B; Jev 0.857.
 ### The decision model, on the Jev benchmark
 
 Its row sits in the table above, measured on the same 300 rows with the same metrics
