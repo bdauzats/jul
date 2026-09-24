@@ -1,18 +1,95 @@
-# JuL — Juste un LLM
+# JuL — Just a LLM
 
-A headless decision runtime: same typed-decision interface as Jev's SDK, but the model underneath is
-yours to pick, swap, or fine-tune. No hosted API, no fixed backbone — point it at any local LLM (MLX
-or PyTorch) and it becomes a calibrated decision head for that model.
+Typed decisions read straight out of a local LLM you choose, with the interface of Jev's SDK, and a
+benchmark table that keeps the row most tables drop: the same three tasks with no LLM at all.
 
-Jev is a hosted _System One model_. JuL is the same idea, un-hosted and un-fixed: same imports, same
-calls, same response shapes as the TypeSafe (Jev) Python SDK — but everything runs on your machine, on
-whichever backbone you choose, and not one token gets generated.
+| The Jev benchmark, 300 rows      | AG News | Banking77 | Emotion |      Mean |         p50 |
+| -------------------------------- | ------: | --------: | ------: | --------: | ----------: |
+| jul `minicpm5-2b-decision` ¹     |    0.91 |      0.79 |    0.69 |     0.796 |      217 ms |
+| Jev (published)                  |    0.91 |      0.87 |    0.48 |     0.753 |      246 ms |
+| TF-IDF + linear SVM, no LLM ²    |    0.88 |      0.76 |    0.43 |     0.690 | **0.17 ms** |
+| jul `qwen3.5-9b`                 |    0.79 |      0.74 |    0.45 |     0.660 |      273 ms |
+| jul `minicpm5-2b`                |    0.80 |      0.59 |    0.46 |     0.617 |   **64 ms** |
+| GLiNER2.5 (published)            |    0.70 |      0.61 |    0.44 |     0.583 |      128 ms |
 
-That last part is not a limitation. JuL is stopped one step before its first syllable and the answer
-is taken straight out of its head: no monologue, no reasoning trace, no opinion on the matter —
-nobody asked for one. It has nothing to say, and it says it in 64 milliseconds.
+Every row but the third is zero-shot: it gets the text, the question and the option list, and no
+example of the task.
 
-And when it is off-key, there is always `client.autotune(...)` — or `jul autotune` from the shell.
+¹ Measured on v1.0 of that model, and it trained on the training splits of these three tasks, so its
+mean is not a like-for-like win over Jev and is not read as one here. The full caveat is in
+[Results](#results).
+² Fitted on 1000 labeled examples per task, so it is out of the comparison with Jev. It is in the
+table as the floor every other row has to clear
+([how it was measured](#the-baseline-worth-remembering)).
+
+Read the third row first. A bag of words and a linear SVM land 6.3 points behind the hosted model at
+roughly 1400× lower latency, and they beat every row below them. The one dataset where the two
+general LLMs come back ahead is Emotion, where recognising a feeling takes meaning rather than
+vocabulary, and that column is where a model starts paying for itself.
+
+## Quickstart
+
+```bash
+git clone https://github.com/bdauzats/jul && cd jul
+pip install -e ".[torch]"          # or ".[mlx]" on Apple Silicon
+jul setup                          # picks the backend, downloads MiniCPM5-2B, checks one real decision
+```
+
+```python
+from jul import TypeSafeClient, Choice
+
+client = TypeSafeClient(model="minicpm5-2b")            # or "qwen3.5-9b"
+
+answer = client.system_one(
+    state="I was charged twice for my subscription this month.",
+    questions={"team": Choice(instructions="Which team should handle this ticket?",
+                              criteria={"billing": "payments, invoices, refunds",
+                                        "technical": "bugs, errors, crashes"})},
+).choices["team"]
+
+print(answer.choice, answer.confidence)                 # the option key, and how sure it is
+```
+
+One design note. The usual way to read a decision out of an LLM is the logprobs of an option letter
+at the next token, which sends every option through the model on every call; jul ships that reading
+as `method="letters"` but does not default to it. The default reads the residual stream: option
+vectors are encoded once and cached, and the forward stops at the layer the preset reads (39 of 40
+on `minicpm5-2b`). The cost then stops following the option count. On MASSIVE and its 59 options the
+vector reading answers in 63 ms where the trained pointer head takes 596, and it pays 4.5 points of
+accuracy for it ([the numbers](#the-decision-model-on-the-development-sets),
+[how to pick](#every-reading-and-every-setting)).
+
+### Try it in 30 seconds, without downloading a model
+
+Measure the floor on your own labels first. This is the recipe `scripts/bench_tfidf.py` runs, and it
+needs nothing from this repo:
+
+```bash
+pip install scikit-learn
+```
+
+```python
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.pipeline import make_pipeline
+from sklearn.svm import LinearSVC
+
+texts  = ["I was charged twice", "my card was declined", "the app crashes on login",
+          "500 error on export", "can I get a demo", "what do your plans cost"]
+labels = ["billing", "billing", "technical", "technical", "sales", "sales"]
+
+clf = make_pipeline(TfidfVectorizer(sublinear_tf=True, ngram_range=(1, 2)), LinearSVC())
+clf.fit(texts, labels)
+print(clf.predict(["my invoice is wrong again"]))       # ['billing']
+```
+
+Six examples are a toy; a few hundred real ones are a decision. If that already sorts your tickets,
+you are done and nothing below is worth your disk. The rest of this README is for the part of the
+task that needs meaning rather than vocabulary.
+
+Everything runs on your machine, and no token is ever generated: the model is stopped one step
+before its first syllable and the answer is taken out of its head. It has nothing to say, and it says
+it in 64 milliseconds. When it is off-key there is `client.autotune(...)`, or `jul autotune` from the
+shell.
 
 ## Install
 
