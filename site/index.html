@@ -623,6 +623,9 @@ latency per decision, and the answer to the ticket.</pre>
   const tick = () => { clock.textContent = new Date().toTimeString().slice(0, 8); };
   tick(); setInterval(tick, 1000);
 
+  // declared before the boot screen: a skipped boot calls startTerm(), which sets it, right away
+  let replayTerm = () => {};
+
   // ── boot screen, once per session ─────────────────────────────────────
   const boot = document.getElementById("boot");
   const bootLines = [
@@ -656,7 +659,6 @@ latency per decision, and the answer to the ticket.</pre>
     startTerm();
   }
 
-  let replayTerm = () => {};
 
   // ── copy the agent prompt ─────────────────────────────────────────────
   const copyBtn = document.getElementById("copy-prompt");
