@@ -155,6 +155,8 @@ ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shad
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 1em 3ch; }
 @media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
 
+.credits { margin-top: 1em; }
+
 /* ── agent prompt ─────────────────────────────────────────────────────── */
 .prompt { margin-top: 1em; padding: .8em 1.5ch; border: 1px dashed var(--dim); white-space: pre-wrap; word-break: break-word; font-size: .9em; max-height: 22em; overflow-y: auto; }
 #copy-prompt { color: var(--ph); white-space: nowrap; }
@@ -460,6 +462,10 @@ latency per decision, and the answer to the ticket.</pre>
   <!-- ── FOOTER ── -->
   <section class="win c8" data-title="ABOUT.TXT">
     <p>JuL, <i>Juste un LLM</i>. A headless decision runtime for local models. Apache-2.0.</p>
+<pre class="credits">CREDITS
+  <a href="https://github.com/bdauzats">bdauzats</a> ........ author
+  <a href="https://github.com/jlestel">jlestel</a> ......... contributor
+  <a href="https://github.com/jguyon">jguyon</a> .......... contributor</pre>
     <p class="note">
       <a href="https://github.com/bdauzats/jul">github.com/bdauzats/jul</a> ·
       <a href="https://huggingface.co/bdauzats/minicpm5-2b-decision-mlx-4bit">weights on Hugging Face</a> ·
@@ -540,7 +546,7 @@ latency per decision, and the answer to the ticket.</pre>
   // ── boot screen, once per session ─────────────────────────────────────
   const boot = document.getElementById("boot");
   const bootLines = [
-    "JuL BIOS v0.1   (C) 2026 bdauzats",
+    "JuL BIOS v0.1",
     "",
     "CPU  : whatever you have ............ OK",
     "RAM  : 1.3 GB needed ................ OK",
