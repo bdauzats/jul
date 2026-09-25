@@ -19,37 +19,40 @@
 
 ---
 
-JuL answers **typed questions** about a piece of text — a choice among options, a yes/no, a score on
-a scale — with calibrated probabilities, on your machine.
+JuL answers typed questions about a piece of text: pick one option, say yes or no, give a score on a
+scale. Every answer comes with a probability, and everything runs on your machine.
 
-It learns no task. It reads the hidden-state vector of a general-purpose model and compares it with
-the *descriptions* of your options. Nothing about your task is frozen into weights: change the
-options, and the next call answers the new question. Change the model, and your code stays the same.
+It doesn't learn your task. It takes a general-purpose model, reads the vector the model builds for
+your text, and compares it with the vectors of your option descriptions. Your task never ends up in
+the weights, so you can change the options and the next call answers the new question. You can also
+swap the model underneath without touching your code.
 
 JuL is stopped one step before its first syllable and the answer is read straight out of its hidden
 states: no monologue, no reasoning trace, no opinion on the matter — nobody asked for one. It has
 nothing to say, and it says it in 55 milliseconds.
 
-And when it is off-key on your data, there is `client.autotune(...)` — or `jul autotune` from the shell.
+And when it is off-key on your data, there is `client.autotune(...)`, or `jul autotune` from the shell.
 
 ## Why JuL
 
-- **Zero-shot, no task training.** 0.857 on Jev's public benchmark (300 examples) with the default
-  model, and JuL is given no example of the tasks. Two of the three sets are in MTEB, which embedding
-  models train on; the clean one, AG News, gives 0.95 with `wemm-4b`. [Results](#results)
-- **Many options, no collapse.** On Banking77, 72 fine-grained intents, the default model scores
-  0.87 zero-shot (MTEB caveat above). Options are encoded once, so their number costs almost nothing
-  at call time.
-- **Probabilities you can put a threshold on.** ECE 0.084 on the same benchmark: a confidence is close
-  to how often it turns out right, so you can automate above a threshold and escalate below it.
-- **Local and open.** Apache 2.0, 2.6 GB, 55 ms per decision on a Mac; `f2llm-1.7b` fits in 1 GB at
-  24 ms. Nothing to pay per call, and the text never leaves the machine.
-- **The model is a part, not the product.** 17 backbones measured, from 90 MB encoders to 9B
-  embedding models. When a better embedding model comes out, `jul models add` plugs it in the same
-  day; your application code does not change.
-- **Tunable in seconds.** `autotune(...)` fits a small head on a few labels, keeps it only if it beats
-  zero-shot in cross-validation, and never touches the model.
-- **Drop-in for the Jev SDK.** Same imports, same calls, same response shapes: change one import.
+- It works zero-shot. The default model scores 0.857 on Jev's public benchmark (300 examples)
+  without seeing a single example of the three tasks. Two of those tasks are in MTEB, which embedding
+  models train on, so read the clean one first: AG News, where `wemm-4b` gets 0.95. [Results](#results)
+- It holds up with many options. Banking77 has 72 intents and the default model gets 0.87 on it
+  (same MTEB caveat). Option vectors are computed once and cached, so adding options barely changes
+  the cost of a call.
+- Its probabilities mean something. ECE is 0.084 on the same benchmark: on average, the confidence
+  it reports is within about 8 points of how often it's actually right. That's what lets you automate
+  above a threshold and send the rest to a human.
+- It runs locally. Apache 2.0, 2.6 GB, 55 ms per decision on a Mac. `f2llm-1.7b` fits in 1 GB and
+  answers in 24 ms. You pay nothing per call and the text stays on your machine.
+- The model is replaceable. We've measured 17 so far, from a 90 MB encoder to 9B embedding models.
+  When a better embedding model ships, `jul models add` wires it in and your application code stays
+  as it is.
+- You can tune it when you have labels. `autotune(...)` fits a small head on top of the vectors,
+  keeps it only if it beats zero-shot in cross-validation, and leaves the model alone.
+- It's a drop-in for the Jev SDK: same imports, same calls, same response shapes. Change the import
+  and you're done.
 
 ## Install
 
@@ -96,9 +99,12 @@ response.nouls["is_bug"].noul             # 0.12
 response.scores["frustration"].score      # 1.15
 ```
 
-`AsyncTypeSafeClient` has the same API, awaitable. Arguments that only mean something remotely
-(`api_key`, `retry`, …) are accepted and ignored. **The option description is what the model compares
-against**, so options must describe themselves; the key is only the identifier you get back.
+`AsyncTypeSafeClient` has the same API, awaitable. Arguments that only make sense for a remote API
+(`api_key`, `retry`, …) are accepted and ignored.
+
+One thing to know before writing your own questions: the model compares the text with the option
+*description*, not with its key. `"billing"` is just the name you get back; `"payments, invoices,
+refunds"` is what does the work. Write descriptions a colleague would understand.
 
 From the shell:
 
@@ -110,19 +116,20 @@ jul ask choice "Which team should handle this ticket?" \
 
 ## How it works
 
-For each prompt formulation, the state and every option go through the same template; the answer is
-the option whose hidden-state vector is closest (cosine, after subtracting a center), turned into
-probabilities by `softmax(cosine / tau)`. Everything that does not depend on the input — prompt
-prefix, option vectors, center — is computed once and cached, so a call only pays for its own tokens.
-Layers, temperatures and centers are fitted per model on development sets the benchmark never sees.
+Each option description goes through the same prompt template as the text, and the answer is the
+option whose hidden-state vector is closest to the text's (cosine similarity, after subtracting a
+center). A softmax over `cosine / tau` turns those similarities into probabilities. The prompt prefix,
+the option vectors and the center don't depend on the input, so they're computed once and cached; a
+call only pays for its own tokens.
 
-Other readings (option-letter logits, trained decision models with a pointer head, tuned heads) are
-described in [docs/models.md](https://github.com/usejul/jul/blob/main/docs/models.md).
+Layers, temperatures and centers were fitted for each model on development sets that the benchmark
+never touches. Other ways of reading an answer (option-letter logits, trained decision models, tuned
+heads) are in [docs/models.md](https://github.com/usejul/jul/blob/main/docs/models.md).
 
 ## Results
 
-Jev's published benchmark: 300 examples over three tasks, every row read through the public API
-(`scripts/bench_jul.py`), zero-shot — no example of these tasks was used.
+This is Jev's published benchmark: 300 examples over three tasks. Every row was produced through the
+public API with `scripts/bench_jul.py`, zero-shot, without any example of these tasks.
 
 | Model | AG News | Banking77 (72 options) | Emotion | Mean | ECE ↓ | p50 | Memory |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -134,30 +141,33 @@ Jev's published benchmark: 300 examples over three tasks, every row read through
 | `minicpm5-2b` (`fast`) | 0.80 | 0.59 | 0.46 | 0.617 | 0.113 | 64 ms ¹ | 2.7 GB |
 | *Jev, published, for reference* | *0.91* | *0.87* | *0.48* | *0.753* | *0.156* | *246 ms* ² | *hosted* |
 
-**How to read it.** 100 rows per task: ±5 points per cell, ±3 on the mean. Banking77 and Emotion are
-in MTEB, which embedding models (`wemm-*`, `f2llm-*`) train on, so they have probably seen these
-texts; **AG News is the clean comparison** (0.95 for `wemm-4b`, 0.91 for Jev). p50 on an M5 Max,
-¹ on an M4 Pro; ² includes the network. Seventeen models were read on these rows; the full table,
-the tuned rows, the decision model and how to reproduce every number are in
-[docs/benchmarks.md](https://github.com/usejul/jul/blob/main/docs/benchmarks.md).
+A few things to keep in mind. With 100 rows per task, each cell is ±5 points and the mean ±3.
+Banking77 and Emotion are in MTEB, and the embedding models here (`wemm-*`, `f2llm-*`) were trained
+on MTEB, so they've probably seen those texts before. AG News is the clean comparison: 0.95 for
+`wemm-4b`, 0.91 for Jev. Latencies are p50 on an M5 Max (¹ on an M4 Pro); Jev's (²) includes the
+network.
 
-**Not measured yet.** Domains far from this benchmark's text (sensor logs, chemistry…) have not been
-tested. Every layer, temperature and center was fitted on English.
+We read seventeen models on these rows. The full table, the tuned results, the decision model and
+the commands to reproduce all of it are in [docs/benchmarks.md](https://github.com/usejul/jul/blob/main/docs/benchmarks.md).
+
+We haven't tested domains far from this kind of text yet (sensor logs, chemistry and so on), and
+every setting was fitted on English.
 
 ### The baseline worth remembering
 
-Before any of this earns its cost, here is what a bag of words does on the same 300 rows, trained on
-the same 1000 labeled examples, with no LLM at all (`scripts/bench_tfidf.py`):
+Before paying for any of this, look at what a bag of words does. Same 300 rows, trained on the same
+1000 labeled examples, no LLM at all (`scripts/bench_tfidf.py`):
 
 | No LLM | AG News | Banking77 | Emotion | Mean | p50 | Training |
 |---|---:|---:|---:|---:|---:|---:|
 | TF-IDF + linear SVM | 0.88 | 0.76 | 0.43 | **0.690** | **0.17 ms** | 0.1 s on CPU |
 
-It is 6.3 points behind Jev at roughly **1400× lower latency**. It loses clearly on Emotion only,
-where recognising a feeling needs meaning rather than vocabulary. If you have labels and your task
-looks like topic or intent sorting, try it first: it takes a minute. CI re-measures these accuracies
-on every PR ([numbers.yml](https://github.com/usejul/jul/blob/main/.github/workflows/numbers.yml));
-change `CLAIMED` there if you change them here.
+It lands 6.3 points behind Jev and is about 1400× faster. The only task where it clearly loses is
+Emotion, because telling feelings apart takes meaning, not vocabulary. If you have labels and your
+problem looks like sorting by topic or intent, try this first. It takes a minute.
+
+CI re-measures these accuracies on every PR ([numbers.yml](https://github.com/usejul/jul/blob/main/.github/workflows/numbers.yml)). The
+expected values are also written in that workflow (`CLAIMED`), so update both together.
 
 ## Models
 
@@ -168,9 +178,9 @@ change `CLAIMED` there if you change them here.
 | `minicpm5-2b-decision` | 1.3 GB | see [benchmarks](https://github.com/usejul/jul/blob/main/docs/benchmarks.md) | — | trained decision model, `jul models add` |
 | `e5-small` (ONNX, 8-bit) | 0.09 GB | 0.543 | 0.713 (0.790 hybrid head) | encoder, 6 ms per text on an M4 Pro |
 
-Any other model is one command away — `jul models add <name> --repo <hf-repo>` fits its layers,
-center and temperature on the dev sets. All 17 measured models, encoders, decision models and every
-setting: [docs/models.md](https://github.com/usejul/jul/blob/main/docs/models.md).
+To use another model, run `jul models add <name> --repo <hf-repo>`. It fits the layer, center and
+temperature on the dev sets. The 17 models we measured, encoders, decision models and every setting
+are listed in [docs/models.md](https://github.com/usejul/jul/blob/main/docs/models.md).
 
 ## Documentation
 
@@ -186,7 +196,7 @@ setting: [docs/models.md](https://github.com/usejul/jul/blob/main/docs/models.md
 | [Publishing](https://github.com/usejul/jul/blob/main/docs/publishing.md) | versioning and the release pipeline |
 
 <details>
-<summary>Looking for a section of the old README? It moved to <code>docs/</code>.</summary>
+<summary>Looking for a section of the old README? Everything moved to <code>docs/</code>.</summary>
 
 - Install, backends, `jul setup` → [installation](https://github.com/usejul/jul/blob/main/docs/installation.md)
 - The models, every model measured, adding a model, micro models, decision models, how it answers,
@@ -203,16 +213,17 @@ setting: [docs/models.md](https://github.com/usejul/jul/blob/main/docs/models.md
 
 ## Showcases
 
-[**jul-showcases**](https://github.com/guyon-it-consulting/jul-showcases), by
-[Jérôme Guyon](https://github.com/JeromeGuyon): seven small demos, each one an idea from
-[jevable.com](https://jevable.com/) running locally through JuL — a form that branches itself,
-re-ranking by intent, notification triage, prompt-difficulty routing, 50,000 real support tickets
-triaged in 668 s at $0, `autotune` taking a fast model from 82.0% to 96.5%, and an on-device browser
-agent that books a train on SNCF Connect.
+[jul-showcases](https://github.com/guyon-it-consulting/jul-showcases) is a set of seven small demos
+by [Jérôme Guyon](https://github.com/JeromeGuyon). Each one takes an idea from
+[jevable.com](https://jevable.com/) and runs it locally with JuL. There's a form that branches on its
+own answers, re-ranking by intent, notification triage and prompt-difficulty routing. One demo triages
+50,000 real support tickets in 668 s for $0, another uses `autotune` to take a fast model from 82.0%
+to 96.5%, and the last is an on-device browser agent that books a train on SNCF Connect.
 
 ## Contributing
 
-Issues and pull requests are welcome on [GitHub](https://github.com/usejul/jul/issues).
+Bug reports, measurements on your own data and pull requests are all welcome on
+[GitHub](https://github.com/usejul/jul/issues).
 
 ```bash
 git clone https://github.com/usejul/jul && cd jul
@@ -221,15 +232,14 @@ pytest tests                  # fast suite, no model, ~30 s
 JUL_SLOW=1 pytest tests       # full suite, downloads the presets
 ```
 
-Tune on the dev datasets, measure on the benchmark once: see
-[reproducing the measurements](https://github.com/usejul/jul/blob/main/docs/benchmarks.md#reproducing-the-measurements).
+One rule for experiments: tune on the dev datasets, and run the benchmark once at the end. The steps
+are in [reproducing the measurements](https://github.com/usejul/jul/blob/main/docs/benchmarks.md#reproducing-the-measurements).
 
 ## License
 
-Apache License 2.0 — see [LICENSE](https://github.com/usejul/jul/blob/main/LICENSE) and [NOTICE](https://github.com/usejul/jul/blob/main/NOTICE).
+Apache License 2.0. See [LICENSE](https://github.com/usejul/jul/blob/main/LICENSE) and [NOTICE](https://github.com/usejul/jul/blob/main/NOTICE).
 
 The decision-model format and its pointer readout come from [Kev](https://github.com/jaredpalmer/kev)
-(Jared Palmer, Apache 2.0), and `minicpm5-2b-decision` is
-[MiniCPM5-2B](https://huggingface.co/openbmb/MiniCPM5-2B) (OpenBMB, Apache 2.0) trained with Kev's code
-on its data plus ours. JuL follows TypeSafe's public System One API; no TypeSafe or Jev code, weights
-or outputs are used.
+(Jared Palmer, Apache 2.0). `minicpm5-2b-decision` is [MiniCPM5-2B](https://huggingface.co/openbmb/MiniCPM5-2B)
+(OpenBMB, Apache 2.0), trained with Kev's code on Kev's data plus ours. JuL follows TypeSafe's public
+System One API. It uses no TypeSafe or Jev code, weights or outputs.
