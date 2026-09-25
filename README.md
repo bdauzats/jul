@@ -53,6 +53,8 @@ And when it is off-key on your data, there is `client.autotune(...)`, or `jul au
   keeps it only if it beats zero-shot in cross-validation, and leaves the model alone.
 - It's a drop-in for the Jev SDK: same imports, same calls, same response shapes. Change the import
   and you're done.
+  For callers that aren't Python, `jul serve` speaks the Jev HTTP protocol on your machine:
+  [serving over HTTP](https://github.com/usejul/jul/blob/main/docs/serve.md).
 
 ## Install
 
@@ -190,6 +192,7 @@ are listed in [docs/models.md](https://github.com/usejul/jul/blob/main/docs/mode
 | [Models](https://github.com/usejul/jul/blob/main/docs/models.md) | every model measured, adding a model, encoders, decision models, readings and settings |
 | [Adapting to your data](https://github.com/usejul/jul/blob/main/docs/tuning.md) | `Context`, `autotune(...)`, hybrid heads, formulations, `jul synth` |
 | [Deployment](https://github.com/usejul/jul/blob/main/docs/deployment.md) | `jul pack`, bundles, the ONNX backend, AWS Lambda numbers |
+| [Serving over HTTP](https://github.com/usejul/jul/blob/main/docs/serve.md) | `jul serve`: a local server speaking the Jev HTTP protocol, for non-Python callers |
 | [Command line](https://github.com/usejul/jul/blob/main/docs/cli.md) | every command and file format (questions, labeled data, I/O) |
 | [Benchmarks](https://github.com/usejul/jul/blob/main/docs/benchmarks.md) | full results, what is and isn't measured, reproducing every number |
 | [Development](https://github.com/usejul/jul/blob/main/docs/development.md) | repository layout, test suites |
