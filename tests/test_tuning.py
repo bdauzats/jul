@@ -36,7 +36,7 @@ def test_below_the_floor_only_calibration_is_fitted():
 
 
 def test_the_floor_scales_with_the_number_of_options():
-    """Measured: 200 examples were not enough for Banking77's 72 options (JOURNAL §9 nonies)."""
+    """Measured: 200 examples were not enough for Banking77's 72 options."""
     assert tuning.min_examples(2) == tuning.min_examples(4) == 20
     assert tuning.min_examples(72) == 216
 

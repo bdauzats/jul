@@ -30,7 +30,7 @@ from .presets import Preset, formulations_for, one_word_preset, resolve
 from .types import (Choice, ChoiceAnswer, Noul, NoulAnswer, Option, Question, Score, ScoreAnswer,
                     SystemOneResponse, Usage, options_of, serialize_state)
 
-#: How each question type is read by default. Vectors everywhere, measured (JOURNAL §9 septies):
+#: How each question type is read by default. Vectors everywhere, measured:
 #: on 480 class-balanced yes/no examples, vectors beat letters on accuracy (0.771 vs 0.692), ranking
 #: (AUC 0.938 vs 0.904) and calibration (ECE 0.148 vs 0.238); on the ordinal hand set, 7/9 vs 6/9 with
 #: letters unable to reach the lowest level at all. `method="letters"` keeps the older reading.
@@ -121,7 +121,7 @@ class TypeSafeClient:
 
         if engine.pointer is not None:
             # A decision model reads the raw state in its own format, once for all the questions. Beyond
-            # `route_above` options the pointer head costs more latency than it earns (JOURNAL §9 tervicies),
+            # `route_above` options the pointer head costs more latency than it earns,
             # so those questions go to the vector reading its decision.json describes.
             # The fallback's fitted numbers live in the preset, written by `jul models add` on these very
             # weights; a model's own decision.json may carry them too (and the default threshold).

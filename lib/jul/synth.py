@@ -12,8 +12,8 @@ Two steps:
      the texts it already wrote (to keep varying). Duplicates and copies of seeds are dropped.
 
 The writer is any `str -> str` function. `mlx_writer(repo)` wraps a local generative model through
-mlx-lm; there is no default, since jul's own presets read models rather than make them write. JOURNAL
-exp. 18: the writer's quality decides everything (MiniCPM5-2B described texts instead of writing them;
+mlx-lm; there is no default, since jul's own presets read models rather than make them write.
+Measured: the writer's quality decides everything (MiniCPM5-2B described texts instead of writing them;
 a 9B instruct model wrote realistic ones).
 """
 

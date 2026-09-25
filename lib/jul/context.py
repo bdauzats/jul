@@ -4,7 +4,7 @@ A context acts at three levels, from the lightest to the strongest:
 
   description   one sentence, prepended to every formulation as `Context: ...`. It sits in the cached
                 prefix, so it costs nothing per call. **Off by default**: measured on both presets and
-                four dev datasets, it failed the plan's criterion (JOURNAL §9 decies) -- MiniCPM gained
+                four dev datasets, it failed the plan's criterion -- MiniCPM gained
                 1.3 points on average with one dataset losing 4, and Qwen lost on all four, 5.2 on
                 average. Turn it on for your own data with `use_description=True`, and measure.
   examples      unlabeled texts of the task. Their mean vector becomes the center, replacing the
@@ -32,7 +32,7 @@ from .home import JUL_HOME
 
 CONTEXT_HOME = JUL_HOME / "contexts"
 
-#: Measured (JOURNAL §9 decies): 10 examples already capture most of the benefit (+3 points for
+#: Measured: 10 examples already capture most of the benefit (+3 points for
 #: MiniCPM, +1.7 for Qwen over the preset's own center), 50 is the best of the sizes tried, and 200
 #: adds nothing. Below 10 the center is noise -- by hand, 5 examples turned a 0.98 "billing" into a
 #: wrong "technical". A warning, not a refusal.
@@ -60,7 +60,7 @@ class Context:
     labeled: list = field(default_factory=list)
     name: str | None = None
     #: The description reaches the prompt only when this is on. Off by default: it measured harmful
-    #: on average (JOURNAL §9 decies). `examples` are unaffected and stay on.
+    #: on average. `examples` are unaffected and stay on.
     use_description: bool = False
 
     #: (preset, formulation) -> center vector, filled by the engine and persisted.

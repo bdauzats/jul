@@ -107,7 +107,7 @@ def test_asking_nothing_is_an_error():
 
 
 def test_every_type_is_read_by_vectors_by_default():
-    """Measured in JOURNAL §9 septies; letters stays reachable with method="letters"."""
+    """Measured on the dev sets; letters stays reachable with method="letters"."""
     from jul.client import DEFAULT_METHOD
     assert set(DEFAULT_METHOD.values()) == {"vector"}
 

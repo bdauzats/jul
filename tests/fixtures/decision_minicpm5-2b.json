@@ -1,6 +1,6 @@
 {
  "method": "pointer",
- "about": "minicpm5-2b-decision: MiniCPM5-2B + merged LoRA, multi-task decision training (JOURNAL §9 duovicies). Format and readout of Kev's pointer model.",
+ "about": "minicpm5-2b-decision: MiniCPM5-2B + merged LoRA, multi-task decision training. Format and readout of Kev's pointer model.",
  "tokens": {
   "state": "<|fim_prefix|>",
   "question": "<|fim_middle|>",

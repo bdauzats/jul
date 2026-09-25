@@ -24,8 +24,8 @@ class _StopForward(Exception):
 
 def _rope_fix(repo: str) -> dict | None:
     """transformers 5 writes the RoPE base under `rope_parameters`; mlx-lm reads `rope_theta` and
-    silently falls back to 10000 when it is missing, which gives wrong answers without any error
-    (JOURNAL §9 duovicies). Pass the right value when a converted config has only the new key."""
+    silently falls back to 10000 when it is missing, which gives wrong answers without any error.
+    Pass the right value when a converted config has only the new key."""
     path = Path(repo) / "config.json"
     if not path.exists():
         # a Hub repo: the cached config, else fetch that one file (1 KB, before the weights)

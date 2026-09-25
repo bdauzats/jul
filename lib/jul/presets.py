@@ -1,8 +1,7 @@
 """Tuned settings per model. Adding a model means adding a preset, not touching the code.
 
 Every number here was fitted on the dev datasets (yahootopics, empathetic, massive,
-financialphrasebank) with `scripts/dev_fit_tau.py`, never on the Jev benchmark. See docs/JOURNAL.md
-for the measurements behind each value.
+financialphrasebank) with `scripts/dev_fit_tau.py`, never on the Jev benchmark.
 
 The presets below were fitted on MLX. `jul models add <name> --backend <b>` (jul/calibrate.py) fits a
 preset for any model on any backend and saves it as `<name>@<backend>.json` in ~/.jul/presets; such a
@@ -218,7 +217,7 @@ PRESETS: dict[str, Preset] = {
               "on; on AG News, which it did not, it scores 0.90 against Jev's 0.91. It sorts one text "
               "into labels; on questions that read two texts together, prefer minicpm5-2b-decision.",
     ),
-    # Layer 39 / 40 and both temperatures fitted on the dev sets (JOURNAL §9 quater; the combination
+    # Layer 39 / 40 and both temperatures fitted on the dev sets (the combination
     # is stable over layers 38-41, 0.565-0.578). Fitting the combination's own tau lowered mean dev
     # ECE from 0.179 to 0.155.
     "minicpm5-2b": Preset(
@@ -231,7 +230,7 @@ PRESETS: dict[str, Preset] = {
         latency_ms="~65",
         quality="0.617 zero-shot on the Jev bench, above GLiNER (0.583); 0.757 with a tuned head",
         center="generic",
-        notes="Centering measured on the dev sets (JOURNAL §9 octies): generic 0.560 > options 0.520 "
+        notes="Centering measured on the dev sets: generic 0.560 > options 0.520 "
               "> none 0.500, and the task center of a Context(examples=...) is best at 0.585. The "
               "asset covers 'one_word'; 'question_options' falls back to the mean of the option "
               "vectors, which measured 0.535 overall.",

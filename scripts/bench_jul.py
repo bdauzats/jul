@@ -8,7 +8,7 @@ Three variants, reported separately because only the first is a fair comparison:
 
   zero-shot   no task data at all, like Jev.
   context     a Context holding 50 unlabeled texts of the task (task center). NOT comparable: Jev
-              gets nothing. The description is left off, measured harmful on average (JOURNAL §9 decies).
+              gets nothing. The description is left off, measured harmful on average.
   tuned       a per-task head trained on 1000 labeled rows disjoint from the benchmark. NOT comparable.
   tuned-hybrid  the same, the head reading the vectors and the TF-IDF of the text (features="hybrid",
               needs jul[tune]). Not run by default.
@@ -45,7 +45,7 @@ MANIFEST_SHA256 = "ec064c52b149de458344cd4b4a44c158460f30b3bbb7fe8b2e7ec72d0abf3
 PUBLISHED = BENCH / "results" / "reports" / "btzsc-pilot-v1.json"
 DATASETS = {"agnews": "AG News", "banking77": "Banking77", "emotiondair": "Emotion"}
 QUESTION = "Which single label best describes the input text?"
-N_CONTEXT = 50          # JOURNAL §9 decies: 10 is enough, 50 is the best of the sizes tried
+N_CONTEXT = 50          # 10 is enough, 50 is the best of the sizes tried
 OUT = ROOT / "runs" / "jev-bench-jul"
 
 digest = sha256_file(MANIFEST)

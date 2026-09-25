@@ -70,7 +70,7 @@ def test_a_fitted_preset_overrides_the_built_in_one_on_its_backend(tmp_path):
 
 
 def test_minicpm_ships_a_preset_fitted_on_torch():
-    """Fitted by `jul models add minicpm5-2b --backend torch` (JOURNAL §9 unvicies)."""
+    """Fitted by `jul models add minicpm5-2b --backend torch`."""
     preset = resolve("minicpm5-2b", "torch")
     assert preset.backend == "torch" and preset.center == "generic"
     assert preset.generic_center(preset.formulations[0], "torch") is not None

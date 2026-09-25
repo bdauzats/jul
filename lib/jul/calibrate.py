@@ -1,8 +1,8 @@
 """Fit a preset for any model, on any backend, in one command: `jul models add <name> --repo <repo>`.
 
-The same protocol that produced the built-in presets (docs/JOURNAL.md §9 quater to §9 octies), run
-end to end. Every choice is made on the dev datasets (yahootopics, empathetic, massive,
-financialphrasebank), never on the Jev benchmark, which stays a separate measurement.
+The same protocol that produced the built-in presets, run end to end. Every choice is made on the
+dev datasets (yahootopics, empathetic, massive, financialphrasebank), never on the Jev benchmark,
+which stays a separate measurement.
 
 1. Checks: the model loads, the prefix cache leaves the vectors unchanged, a call does not disturb
    the next one, and the letters reading (Noul, Score) has single-token markers.
@@ -238,8 +238,8 @@ def choose(packs: list[dict], generic: dict[int, np.ndarray], layers: list[int])
 
     `packs`: per dev set, {"y", "ow": {"X", "L", "U"}, "qo": {...}}, each array {layer: (n, d)}.
 
-    Each center gets its best layers (smoothed accuracy). Centering has helped every model measured
-    (JOURNAL §9 octies), so "none" is only kept when it beats the best center by more than one
+    Each center gets its best layers (smoothed accuracy). Centering has helped every model measured,
+    so "none" is only kept when it beats the best center by more than one
     standard error: with hundreds of combinations searched, a smaller lead is noise. tau is fitted
     with the chosen center, since that is what a call without task data computes.
     """
@@ -311,7 +311,7 @@ def extract(backbone: Backbone, dev: list[DevSet], generic_texts: list[str],
 # --- the command ----------------------------------------------------------------------------------
 
 #: Option counts the routing threshold is looked for at, and the speedup that has to be reached. The
-#: pointer head is worth a few points at every count (JOURNAL §9 tervicies: about 5 on massive, flat over
+#: pointer head is worth a few points at every count (about 5 on massive, flat over
 #: the range), so the threshold is not "where accuracy stops suffering" — it is where the speed is worth
 #: those points. `route_above=0` on a call buys them back.
 ROUTE_COUNTS = (5, 10, 20, 30, 40)

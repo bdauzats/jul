@@ -1,15 +1,14 @@
 """Optional per-task head, trained on the vectors the method already computes.
 
 The LLM is never modified: the head is one linear layer over the frozen vectors, it trains in a few
-seconds and costs well under a millisecond at inference. Measured (JOURNAL §6 and §9 ter): MiniCPM5-2B
+seconds and costs well under a millisecond at inference. Measured: MiniCPM5-2B
 on dair-ai/emotion goes from 0.549 zero-shot to 0.633 with 2000 training examples. The gain for
 Qwen3.5-9B has never been measured, and its zero-shot is already much higher, so nothing is promised.
 
 Safety net: the head is judged by stratified cross-validation, so every labeled example is predicted
 by a head that never saw it. If the head does not beat the zero-shot method there, it is not
 activated and the report says so. A single held-out fifth was too noisy to decide on: at 50 examples
-it judged on ten, and measurably refused heads worth +12 points while accepting one worth -0.5
-(JOURNAL §9 nonies).
+it judged on ten, and measurably refused heads worth +12 points while accepting one worth -0.5.
 
 A head only knows the options it was trained on, and only the preset whose vectors it saw: changing
 either means tuning again.
@@ -33,7 +32,7 @@ from .calibration import fit_temperature, softmax
 FEATURES = ("vector", "lexical", "hybrid")
 
 #: Below this, only calibration is fitted. A flat floor was wrong: measured on six model x dataset
-#: curves (JOURNAL §9 nonies), 50 examples blocked a head worth +12 points on Qwen3.5-9B / AG News,
+#: curves, 50 examples blocked a head worth +12 points on Qwen3.5-9B / AG News,
 #: while 200 examples were not enough for Banking77's 72 options. What matters is examples per option,
 #: plus enough total for the cross-validation to mean anything. Above this floor the gate decides.
 def min_examples(n_options: int) -> int:

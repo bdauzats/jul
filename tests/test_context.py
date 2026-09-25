@@ -61,7 +61,7 @@ def test_cache_key_changes_with_what_reaches_the_prompt():
 
 @few
 def test_the_description_is_off_by_default():
-    """Measured harmful on average on both presets (JOURNAL §9 decies)."""
+    """Measured harmful on average on both presets."""
     assert Context(description="some data").use_description is False
 
 
