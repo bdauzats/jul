@@ -119,6 +119,23 @@ main {
 .win:not(.ascii) .w-body { padding: 1em 2ch; }
 .win.collapsed .w-mid { display: none; }
 .w-btn:hover { background: var(--ph); color: var(--ink); }
+/* [▲] lifts the window over the page; Esc or Restore puts it back. */
+.win.max {
+  position: fixed; inset: 16px; z-index: 60;
+  box-shadow: 1.2ch .9em 0 var(--faint), 0 0 0 100vmax rgba(0,0,0,.72);
+}
+.win.max > .w-mid { min-height: 0; grid-template-rows: minmax(0, 1fr); }
+.win.max .w-body { overflow: auto; }
+body:has(.win.max) { overflow: hidden; }
+/* [■] opens the control menu, as on Windows 3.x */
+.w-menu {
+  position: absolute; top: 1.2em; left: 2ch; z-index: 5; display: grid; min-width: 16ch;
+  background: var(--bg); border: 3px double var(--ph); box-shadow: 1.2ch .9em 0 var(--faint);
+}
+.w-menu[hidden] { display: none; }
+.w-menu button { text-align: left; padding: 0 1ch; white-space: pre; }
+.w-menu button:disabled { color: var(--dim); cursor: default; }
+.w-menu button:disabled:hover { background: none; color: var(--dim); }
 
 .eyebrow { font-family: var(--crt); font-size: 1.3rem; color: var(--dim); letter-spacing: .04em; }
 h2.h { font-family: var(--crt); font-weight: 400; font-size: 2rem; line-height: 1.05; margin: .15em 0 .5em; }
@@ -241,6 +258,7 @@ ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shad
 <pre>  J / K ........ next / previous window
   Tab .......... walk windows and links
   Enter ........ fold / unfold the window
+  M ............ maximize / restore the window
   I B H ........ Install · Bench · How
   G ............ GitHub
   P ............ change phosphor
@@ -481,7 +499,7 @@ r.choices["team"].probabilities  <span class="dim"># {"billing": 0.88, ...}</spa
       </ul>
       <ul class="dos">
         <li><span>With 1,000 labeled examples, <b>wemm-4b-4bit reaches 0.897</b> and 0.94 on Banking77. Harrier-0.6B passes Jev in 0.31 GB at 13 ms.</span></li>
-        <li><span>³ multilingual-e5-small, a 118M-parameter encoder (ONNX, 8-bit, M4 Pro). <b>With a hybrid head (vectors + TF-IDF) it reaches 0.790</b>, above Jev, at 6 ms per text.</span></li>
+        <li><span>³ multilingual-e5-small, a 118M-parameter encoder (ONNX, 8-bit, M4 Pro): single-digit-millisecond decisions. <b>With a hybrid head (vectors + TF-IDF) it reaches 0.790</b>, above Jev, at 6 ms per text.</span></li>
         <li><span>100 rows per dataset: ±5 points per cell, ±3 on the mean. If a bag of words solves your task, use it: <a href="https://github.com/usejul/jul#the-baseline-worth-remembering">we measured that too</a>.</span></li>
       </ul>
     </div>
@@ -580,6 +598,49 @@ latency per decision, and the answer to the ticket.</pre>
 
   // ── windows: redraw each frame in box-drawing characters ──────────────
   const H = "─".repeat(600), V = "│\n".repeat(400);
+  // Minimize folds the window to its title bar; Maximize fills the screen; Restore undoes either.
+  const winAct = (win, act) => {
+    closeMenus();
+    if (act === "min") { win.classList.remove("max"); win.classList.toggle("collapsed"); }
+    if (act === "max") {
+      win.classList.remove("collapsed");
+      if (win.classList.toggle("max")) win.focus({ preventScroll: true });
+      else win.scrollIntoView({ block: "nearest" });
+    }
+    if (act === "restore") { win.classList.remove("collapsed", "max"); win.scrollIntoView({ block: "nearest" }); }
+  };
+  const closeMenus = () => document.querySelectorAll(".w-menu:not([hidden])").forEach(m => { m.hidden = true; });
+  const toggleMenu = win => {
+    let menu = win.querySelector(":scope > .w-menu");
+    if (!menu) {
+      menu = document.createElement("div");
+      menu.className = "w-menu"; menu.hidden = true; menu.setAttribute("role", "menu");
+      [["restore", "Restore"], ["min", "Minimize   ▼"], ["max", "Maximize   ▲"]].forEach(([act, label]) => {
+        const b = document.createElement("button");
+        b.type = "button"; b.dataset.act = act; b.textContent = label; b.setAttribute("role", "menuitem");
+        b.addEventListener("click", () => winAct(win, act));
+        menu.appendChild(b);
+      });
+      menu.addEventListener("keydown", e => {
+        if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+        e.preventDefault(); e.stopPropagation();
+        const items = [...menu.querySelectorAll("button:not(:disabled)")];
+        const i = items.indexOf(document.activeElement);
+        items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length].focus();
+      });
+      win.appendChild(menu);
+    }
+    const open = menu.hidden;
+    closeMenus();
+    if (!open) return;
+    const c = win.classList;
+    menu.querySelector('[data-act="restore"]').disabled = !c.contains("collapsed") && !c.contains("max");
+    menu.querySelector('[data-act="min"]').disabled = c.contains("collapsed");
+    menu.querySelector('[data-act="max"]').disabled = c.contains("max");
+    menu.hidden = false;
+    menu.querySelector("button:not(:disabled)").focus();
+  };
+  document.addEventListener("click", e => { if (!e.target.closest(".w-menu")) closeMenus(); });
   document.querySelectorAll(".win").forEach(win => {
     const body = document.createElement("div");
     body.className = "w-body";
@@ -587,14 +648,19 @@ latency per decision, and the answer to the ticket.</pre>
     const title = win.dataset.title || "";
     win.innerHTML =
       `<div class="w-top" aria-hidden="true"><span>┌─</span><button class="w-btn" type="button" tabindex="-1">[■]</button>` +
-      `<span>─</span><span class="w-title"></span><span class="w-fill">${H}</span><span>─[▼][▲]─┐</span></div>` +
+      `<span>─</span><span class="w-title"></span><span class="w-fill">${H}</span><span>─</span>` +
+      `<button class="w-btn" type="button" tabindex="-1" data-act="min" title="Minimize">[▼]</button>` +
+      `<button class="w-btn" type="button" tabindex="-1" data-act="max" title="Maximize">[▲]</button><span>─┐</span></div>` +
       `<div class="w-mid"><span class="w-side" aria-hidden="true"><span>${V}</span></span>` +
       `<span class="w-side" aria-hidden="true"><span>${V}</span></span></div>` +
       `<div class="w-bot" aria-hidden="true"><span>└</span><span class="w-fill">${H}</span><span>┘</span></div>`;
     win.querySelector(".w-title").textContent = title;
     const mid = win.querySelector(".w-mid");
     mid.insertBefore(body, mid.lastElementChild);
-    win.querySelector(".w-btn").addEventListener("click", () => win.classList.toggle("collapsed"));
+    win.querySelector(".w-btn").title = "Control menu";
+    win.querySelector(".w-btn").addEventListener("click", e => { e.stopPropagation(); toggleMenu(win); });
+    win.querySelector('[data-act="min"]').addEventListener("click", () => winAct(win, "min"));
+    win.querySelector('[data-act="max"]').addEventListener("click", () => winAct(win, "max"));
     win.classList.add("ascii");
     win.tabIndex = 0;
     win.setAttribute("role", "region");
@@ -805,12 +871,20 @@ latency per decision, and the answer to the ticket.</pre>
     if (recent.join() === KONAMI.join()) { recent = []; e.preventDefault(); closeModals(); konami(); return; }
     if (k === "b" && recent.slice(-9, -1).join() === KONAMI.slice(0, 8).join()) return;
 
-    if (k === "escape") { closeModals(); return; }
+    if (k === "escape") {
+      const menu = document.querySelector(".w-menu:not([hidden])"), max = document.querySelector(".win.max");
+      if (menu) { closeMenus(); menu.parentElement.focus(); }
+      else if (max) winAct(max, "max");
+      else closeModals();
+      return;
+    }
     const modalOpen = [...document.querySelectorAll(".modal")].some(m => !m.hidden);
     if (modalOpen) return;
     if (e.target.matches && e.target.matches("input, textarea, select, [contenteditable]")) return;
 
-    if (k === "enter" && active && e.target === active) { e.preventDefault(); active.classList.toggle("collapsed"); return; }
+    if (k === "enter" && active && e.target === active) { e.preventDefault(); winAct(active, "min"); return; }
+    if (k === "m" && active) { e.preventDefault(); winAct(active, "max"); return; }
+    if (document.querySelector(".win.max")) return;
     const jump = id => { const w = document.getElementById(id); w.focus({ preventScroll: true }); w.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" }); };
     const actions = {
       j: () => go(1), k: () => go(-1),
@@ -832,6 +906,7 @@ latency per decision, and the answer to the ticket.</pre>
     "f2llm-1.7b":   { zs: [.817, 24, 1.0, "M5 Max"], tuned: [.833, 24, 1.0, "M5 Max"], label: "F2LLM-v2-1.7B" },
     "harrier-0.6b": { zs: [.667, 13, .31, "M5 Max"], tuned: [.814, 13, .31, "M5 Max"], label: "Harrier-OSS-0.6B" },
     "e5-small":     { zs: [.543, 6, .09, "M4 Pro"], tuned: [.713, 5, .09, "M4 Pro"], label: "multilingual-e5-small", bits: 8,
+                      speed: " Single-digit-millisecond decisions.",
                       extra: " With a hybrid head (vectors + TF-IDF): 0.790, above Jev." },
     "minicpm5-2b":  { zs: [.617, 64, 2.7, "M4 Pro"], tuned: [.757, 38, 2.7, "M5 Max"], label: "MiniCPM5-2B" },
   };
@@ -875,7 +950,7 @@ latency per decision, and the answer to the ticket.</pre>
     setBars("kpi-gb-b", kbar(gb, 10) + " " + (gb < 1 ? gb.toFixed(2) : gb.toFixed(1)) + " GB", "·".repeat(KB) + " hosted");
     document.getElementById("kpi-note").textContent =
       `${m.label}${vs.mode === "tuned" ? " + autotune (1,000 labeled examples per task; Jev gets none)" : ", zero-shot"}. ` +
-      `Latency on an ${hw}` + (vs.model === "wemm-4b-4bit" ? "; about 145 ms on an M4 Pro." : ".") +
+      `Latency on an ${hw}` + (vs.model === "wemm-4b-4bit" ? "; about 145 ms on an M4 Pro." : ".") + (m.speed || "") +
       (vs.mode === "tuned" && m.extra ? m.extra : "") +
       " Jev's latency includes the network; its memory is not published.";
     document.querySelectorAll("[data-vs-model]").forEach(b => b.setAttribute("aria-pressed", b.dataset.vsModel === vs.model));
