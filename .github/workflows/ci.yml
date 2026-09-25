@@ -4,6 +4,8 @@ name: CI
 #   1. does the package install and pass its tests with NO backend at all?
 #   2. does the torch backend read the right vectors, on a real model, on Linux?
 #   3. is the lint clean on the rules that catch bugs (not on style)?
+#   4. does the onnx backend read what torch reads, for decoders and encoders, and does a compiled
+#      bundle answer what its client answers? (in the torch job, on tiny models built on the fly)
 #
 # MLX cannot run here (GitHub has no Apple Silicon runners in the free tier), so the MLX-only tests
 # stay skipped and say so. That is the honest scope of this file.
@@ -91,6 +93,14 @@ jobs:
           JUL_DEVICE: cpu
           JUL_TEST_MODEL: Qwen/Qwen3-0.6B
         run: pytest tests -m torch -q -rs
+      # 4. The onnx backend, encoders, jul compile and the lexical heads, on tiny random models that jul
+      #    exports itself (only two tokenizers are downloaded).
+      - name: onnx export and backend, encoders, compile, lexical heads
+        env:
+          JUL_DEVICE: cpu
+        run: |
+          pip install -e ".[onnx,onnx-export,tune]"
+          pytest tests/test_onnx.py tests/test_encoder.py tests/test_compiled.py tests/test_lexical.py -q -rs
       - name: The CLI runs end to end
         env:
           JUL_BACKEND: torch

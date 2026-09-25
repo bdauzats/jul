@@ -1,22 +1,21 @@
 name: Release
 
-# One build, two destinations:
+# One build; a version only ever comes out of a tag:
 #
-#   push to main            -> TestPyPI, as 0.1.0.dev<run number>
-#   GitHub release published -> PyPI, as the version in lib/jul/__init__.py
+#   push to main                  -> build and smoke-test only, as <version>.dev<run number>; no upload
+#   push of a tag v<version>      -> PyPI, as the version in lib/jul/__init__.py
+#   push of a tag v<version>rcN   -> TestPyPI (also aN, bN, .devN: any pre-release), to try it first
 #
 # The same artifact is built, checked and installed in a clean environment before either upload, so
 # a broken sdist or a missing asset fails here and not in somebody's `pip install`.
 #
 # Uploads use PyPI Trusted Publishing (OIDC): no API token lives in this repo. Each index needs a
-# publisher declared once on its side, and TestPyPI runs only where the PUBLISH_TESTPYPI repository
-# variable is set. docs/publishing.md has the setup and the reasoning.
+# publisher declared once on its side. docs/publishing.md has the setup and the reasoning.
 
 on:
   push:
     branches: [main]
-  release:
-    types: [published]
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -45,9 +44,9 @@ jobs:
 
       # A release must not ship a version nobody can find in the source tree.
       - name: The tag and the package version agree
-        if: github.event_name == 'release'
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.ref_name }}
         run: |
           python - <<'PY'
           import os, pathlib, re, sys
@@ -59,9 +58,9 @@ jobs:
           print(f"tag and version agree: {version}")
           PY
 
-      # Every push to main uploads to TestPyPI, and an index refuses a version twice, so a run that
-      # is not a release gets its own throwaway version. pyproject reads the version from the
-      # module attribute, so rewriting that one line is enough.
+      # A run that is not a tag builds a throwaway version, so that its artifact can never be
+      # mistaken for a release. pyproject reads the version from the module attribute, so rewriting
+      # that one line is enough.
       - name: Stamp a dev version on anything that is not a release
         id: version
         run: |
@@ -70,7 +69,7 @@ jobs:
           path = pathlib.Path("lib/jul/__init__.py")
           src = path.read_text()
           version = re.search(r'__version__ = "([^"]+)"', src).group(1)
-          if os.environ["GITHUB_EVENT_NAME"] != "release":
+          if not os.environ["GITHUB_REF"].startswith("refs/tags/v"):
               version = f"{version}.dev{os.environ['GITHUB_RUN_NUMBER']}"
               path.write_text(re.sub(r'__version__ = "[^"]+"',
                                      f'__version__ = "{version}"', src, count=1))
@@ -169,7 +168,11 @@ jobs:
   testpypi:
     name: publish to TestPyPI
     needs: [build, smoke]
-    if: github.event_name == 'push' && vars.PUBLISH_TESTPYPI == 'true'
+    # a pre-release tag: v0.2.0rc1, v0.2.0a1, v0.2.0b1, v0.2.0.dev1
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      (contains(github.ref_name, 'rc') || contains(github.ref_name, 'a') ||
+       contains(github.ref_name, 'b') || contains(github.ref_name, 'dev'))
     runs-on: ubuntu-24.04
     environment:
       name: testpypi
@@ -189,7 +192,11 @@ jobs:
   pypi:
     name: publish to PyPI
     needs: [build, smoke]
-    if: github.event_name == 'release'
+    # a final tag: v0.2.0
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') &&
+      !(contains(github.ref_name, 'rc') || contains(github.ref_name, 'a') ||
+        contains(github.ref_name, 'b') || contains(github.ref_name, 'dev'))
     runs-on: ubuntu-24.04
     environment:
       name: pypi

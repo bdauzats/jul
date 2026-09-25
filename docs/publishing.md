@@ -1,12 +1,13 @@
 # Publishing jul
 
-`.github/workflows/release.yml` builds the package on every push to `main` and on every published
-GitHub release. Same build both times; only the destination differs.
+`.github/workflows/release.yml` builds the package on every push to `main` and on every `v*` tag.
+Same build every time; **a version is only published from a tag**.
 
-| Trigger | Version published | Index |
+| Trigger | Version built | Index |
 |---|---|---|
-| push to `main` | `0.1.0.dev<run number>` | TestPyPI, and only if the repo variable `PUBLISH_TESTPYPI` is `true` |
-| release published | `jul.__version__`, which must match the tag | PyPI |
+| push to `main` | `<version>.dev<run number>` | nothing: it builds, smoke-tests and stops |
+| tag `v<version>rcN` (or `aN`, `bN`, `.devN`) | `jul.__version__`, which must match the tag | TestPyPI |
+| tag `v<version>` | `jul.__version__`, which must match the tag | PyPI |
 | `workflow_dispatch` | dev version | nothing, it builds and stops |
 
 Nothing uploads until the build passes `twine check --strict`, the sdist has rebuilt the wheel on
@@ -52,16 +53,16 @@ Then, in this repo:
 - Settings > Environments: create `pypi` and `testpypi`. Worth adding a required reviewer on
   `pypi`, since a PyPI version number can never be reused: the only undo for a bad upload is burning
   the number.
-- Settings > Variables: add `PUBLISH_TESTPYPI` = `true` when you want pushes to `main` to upload.
-  Without it, `main` still builds and smoke-tests, it just does not publish. Leave it unset on a
-  fork.
+- Merging to `main` never publishes: it only builds and smoke-tests.
 
 ## Cutting a release
 
 1. Bump `__version__` in `lib/jul/__init__.py`, commit, merge to `main`.
-2. Watch the TestPyPI run if the variable is set, or install the artifact from the run by hand.
-3. Create the GitHub release with tag `v<version>` and publish it.
-4. The `pypi` job uploads. If you put a reviewer on the environment, it waits for you first.
+2. Optionally, try it on TestPyPI first: set `__version__` to `0.2.0rc1`, tag `v0.2.0rc1`, push the
+   tag, `pip install -i https://test.pypi.org/simple/ jul==0.2.0rc1`.
+3. Tag the release commit and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
+4. The `pypi` job uploads. If you put a reviewer on the environment, it waits for you first. A GitHub
+   release (notes) can be written on the tag afterwards; it no longer triggers anything.
 
 ## What it does not cover
 
