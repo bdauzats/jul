@@ -1,11 +1,13 @@
 name: Release
 
-# One build; a version only ever comes out of a tag:
+# One build; the version comes from git (setuptools-scm), never from a file edited by hand:
 #
-#   push to main                  -> build and smoke-test only, as <version>.dev<run number>; no upload
-#   push of a tag v<version>      -> PyPI, as the version in lib/jul/__init__.py
-#   push of a tag v<version>rcN   -> TestPyPI (also aN, bN, .devN: any pre-release), to try it first
+#   push to main                  -> <next patch>.dev<commits since the last tag>, e.g. 0.1.2.dev7:
+#                                    the unstable channel, on TestPyPI (when PUBLISH_TESTPYPI is true)
+#   push of a tag v0.2.0rc1       -> 0.2.0rc1 (any pre-release: aN, bN, rcN, .devN) on TestPyPI
+#   push of a tag v0.2.0          -> 0.2.0 on PyPI
 #
+# pip sorts 0.1.2.dev7 after 0.1.1 and before 0.1.2, and only installs it with --pre.
 # The same artifact is built, checked and installed in a clean environment before either upload, so
 # a broken sdist or a missing asset fails here and not in somebody's `pip install`.
 #
@@ -34,54 +36,42 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0          # setuptools-scm needs the tags and the history since the last one
 
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
           cache: pip
 
-      # A release must not ship a version nobody can find in the source tree.
-      - name: The tag and the package version agree
-        if: startsWith(github.ref, 'refs/tags/v')
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          python - <<'PY'
-          import os, pathlib, re, sys
-          tag = os.environ["TAG"].lstrip("v")
-          src = pathlib.Path("lib/jul/__init__.py").read_text()
-          version = re.search(r'__version__ = "([^"]+)"', src).group(1)
-          if tag != version:
-              sys.exit(f"release tag {tag!r} but jul.__version__ is {version!r}")
-          print(f"tag and version agree: {version}")
-          PY
-
-      # A run that is not a tag builds a throwaway version, so that its artifact can never be
-      # mistaken for a release. pyproject reads the version from the module attribute, so rewriting
-      # that one line is enough.
-      - name: Stamp a dev version on anything that is not a release
-        id: version
-        run: |
-          python - <<'PY'
-          import os, pathlib, re
-          path = pathlib.Path("lib/jul/__init__.py")
-          src = path.read_text()
-          version = re.search(r'__version__ = "([^"]+)"', src).group(1)
-          if not os.environ["GITHUB_REF"].startswith("refs/tags/v"):
-              version = f"{version}.dev{os.environ['GITHUB_RUN_NUMBER']}"
-              path.write_text(re.sub(r'__version__ = "[^"]+"',
-                                     f'__version__ = "{version}"', src, count=1))
-          print(f"building {version}")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
-              fh.write(f"version={version}\n")
-          PY
-
       - name: Build
         run: |
-          pip install build twine
+          pip install build twine packaging
           python -m build
+
+      # What was built, and on a tag, that it is exactly the tag: a tag on a commit that is not the
+      # one checked out, or a dirty tree, would give a .devN instead.
+      - name: The version built
+        id: version
+        env:
+          TAG: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+        run: |
+          python - <<'PY'
+          import os, pathlib, sys
+          from packaging.version import Version
+          sdist = next(pathlib.Path("dist").glob("jul-*.tar.gz")).name
+          version = sdist.removeprefix("jul-").removesuffix(".tar.gz")
+          tag = os.environ["TAG"].removeprefix("v")
+          if tag and Version(tag) != Version(version):
+              sys.exit(f"tag {tag!r} but the build is {version!r}")
+          pre = Version(version).is_prerelease
+          print(f"built {version} ({'pre-release' if pre else 'release'})")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"version={version}\nprerelease={str(pre).lower()}\n")
+          PY
 
       - name: Metadata is renderable on the index page
         run: twine check --strict dist/*
@@ -168,11 +158,10 @@ jobs:
   testpypi:
     name: publish to TestPyPI
     needs: [build, smoke]
-    # a pre-release tag: v0.2.0rc1, v0.2.0a1, v0.2.0b1, v0.2.0.dev1
+    # the unstable channel (main) and pre-release tags
     if: >-
-      startsWith(github.ref, 'refs/tags/v') &&
-      (contains(github.ref_name, 'rc') || contains(github.ref_name, 'a') ||
-       contains(github.ref_name, 'b') || contains(github.ref_name, 'dev'))
+      (github.ref == 'refs/heads/main' && vars.PUBLISH_TESTPYPI == 'true') ||
+      (startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.prerelease == 'true')
     runs-on: ubuntu-24.04
     environment:
       name: testpypi
@@ -193,10 +182,7 @@ jobs:
     name: publish to PyPI
     needs: [build, smoke]
     # a final tag: v0.2.0
-    if: >-
-      startsWith(github.ref, 'refs/tags/v') &&
-      !(contains(github.ref_name, 'rc') || contains(github.ref_name, 'a') ||
-        contains(github.ref_name, 'b') || contains(github.ref_name, 'dev'))
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.prerelease == 'false'
     runs-on: ubuntu-24.04
     environment:
       name: pypi

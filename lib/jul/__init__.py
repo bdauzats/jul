@@ -17,7 +17,10 @@ from .tuning import TuningReport
 from .types import (Choice, ChoiceAnswer, Noul, NoulAnswer, NoulCriteria, Score, ScoreAnswer,
                     SystemOneResponse, Usage)
 
-__version__ = "0.1.1"
+try:  # written by setuptools-scm from the git tags when the package is built or installed
+    from ._version import __version__
+except ImportError:  # a checkout used without installing it
+    __version__ = "0+unknown"
 
 __all__ = [
     "TypeSafeClient", "AsyncTypeSafeClient",

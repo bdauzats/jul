@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=77"]
+requires = ["setuptools>=77", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -48,10 +48,12 @@ dev = ["pytest>=8", "pyyaml>=6"]
 [project.scripts]
 jul = "jul_cli.main:main"
 
-[tool.setuptools.dynamic]
-# The version has one home: jul.__version__. The release workflow reads it, and on a non-release
-# build rewrites that one line to publish a .devN to TestPyPI.
-version = {attr = "jul.__version__"}
+[tool.setuptools_scm]
+# The version comes from git: a tag v0.2.0 builds 0.2.0; N commits after the last tag build the next
+# patch as a .devN (0.1.2.dev7), which pip sorts after the last release. No local "+g<sha>" part,
+# which PyPI and TestPyPI refuse. Written to lib/jul/_version.py at build/install (not committed).
+version_file = "lib/jul/_version.py"
+local_scheme = "no-local-version"
 
 [tool.setuptools]
 package-dir = {"jul" = "lib/jul", "jul.backends" = "lib/jul/backends", "jul.lab" = "lib/jul/lab", "jul_cli" = "cli/jul_cli"}

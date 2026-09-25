@@ -1,33 +1,40 @@
 # Publishing jul
 
-`.github/workflows/release.yml` builds the package on every push to `main` and on every `v*` tag.
-Same build every time; **a version is only published from a tag**.
+`.github/workflows/release.yml` builds the package on every push to `main` and on every `v*` tag. The
+version comes from git ([setuptools-scm](https://setuptools-scm.readthedocs.io/)), never from a file
+edited by hand, and **a release version only comes from a tag**. Git is trunk-based: `main` moves
+continuously and publishes an unstable build; a tag cuts a release.
 
 | Trigger | Version built | Index |
 |---|---|---|
-| push to `main` | `<version>.dev<run number>` | nothing: it builds, smoke-tests and stops |
-| tag `v<version>rcN` (or `aN`, `bN`, `.devN`) | `jul.__version__`, which must match the tag | TestPyPI |
-| tag `v<version>` | `jul.__version__`, which must match the tag | PyPI |
-| `workflow_dispatch` | dev version | nothing, it builds and stops |
+| push to `main` | the next patch as a dev release: `0.1.2.dev7` = 7 commits after `v0.1.1` | TestPyPI, when the repo variable `PUBLISH_TESTPYPI` is `true` (the unstable channel) |
+| tag `v0.2.0rc1` (any pre-release: `aN`, `bN`, `rcN`, `.devN`) | `0.2.0rc1` | TestPyPI |
+| tag `v0.2.0` | `0.2.0` | PyPI |
+| `workflow_dispatch` | as for `main` | nothing, it builds and stops |
 
 Nothing uploads until the build passes `twine check --strict`, the sdist has rebuilt the wheel on
 its own, and the wheel has installed and imported in a clean environment on Linux 3.10, Linux 3.13
 and macOS 3.13.
 
-## The version lives in one place
+## Where the version comes from
 
-`lib/jul/__init__.py`:
+`pyproject.toml` has `[tool.setuptools_scm]`: the build reads the last `v*` tag and the commits since.
+On a tagged commit the version is the tag; after it, the next patch with `.dev<commits>`, which pip
+sorts after the last release and installs only with `--pre`. The local part (`+g<sha>`) is dropped:
+the indexes refuse it. The version is written to `lib/jul/_version.py` at build or install (ignored by
+git) and read by `jul.__version__`; a checkout used without installing it says `0+unknown`.
 
-```python
-__version__ = "0.1.0"
+On a tag the workflow checks that the build is exactly the tag: a tag pushed on another commit than
+the one built, or a dirty tree, would give a `.devN`, and the build stops before anything is uploaded.
+
+To install the unstable channel:
+
+```bash
+pip install --pre -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple jul
 ```
 
-`pyproject.toml` reads it through `[tool.setuptools.dynamic]`, so bumping the module attribute is
-the whole release prep. A non-release run appends `.devN` to that same line before building, because
-PyPI and TestPyPI both refuse a version that already exists and every push to `main` needs a version
-of its own.
-
-If the release tag and `__version__` disagree, the build stops before anything is uploaded.
+(`--extra-index-url`: jul's dependencies are not all on TestPyPI.) TestPyPI is not a production
+index and may be wiped: it is for trying things, never for depending on.
 
 ## One-time setup, on the index side
 
@@ -53,16 +60,20 @@ Then, in this repo:
 - Settings > Environments: create `pypi` and `testpypi`. Worth adding a required reviewer on
   `pypi`, since a PyPI version number can never be reused: the only undo for a bad upload is burning
   the number.
-- Merging to `main` never publishes: it only builds and smoke-tests.
+- Settings > Variables: add `PUBLISH_TESTPYPI` = `true` for pushes to `main` to publish the
+  unstable build to TestPyPI. Without it, `main` still builds and smoke-tests. Leave it unset on a
+  fork. A merge to `main` never reaches PyPI.
 
 ## Cutting a release
 
-1. Bump `__version__` in `lib/jul/__init__.py`, commit, merge to `main`.
-2. Optionally, try it on TestPyPI first: set `__version__` to `0.2.0rc1`, tag `v0.2.0rc1`, push the
-   tag, `pip install -i https://test.pypi.org/simple/ jul==0.2.0rc1`.
-3. Tag the release commit and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
-4. The `pypi` job uploads. If you put a reviewer on the environment, it waits for you first. A GitHub
-   release (notes) can be written on the tag afterwards; it no longer triggers anything.
+1. `main` is green (and, if you like, its dev build installs from TestPyPI).
+2. Optionally a release candidate first: `git tag v0.2.0rc1 && git push origin v0.2.0rc1`, then
+   `pip install --pre -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple jul==0.2.0rc1`.
+3. Tag the release commit on `main` and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
+4. The `pypi` job uploads. If you put a reviewer on the environment, it waits for you first. Release
+   notes can be written as a GitHub release on the tag afterwards; it triggers nothing.
+
+No file changes for a release: there is no version to bump.
 
 ## What it does not cover
 
