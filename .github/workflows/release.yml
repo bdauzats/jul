@@ -23,9 +23,11 @@ on:
 permissions:
   contents: read
 
+# On main, a new push cancels the run of the previous one, wherever it is, including the wait before
+# TestPyPI (see `debounce`): of a burst of pushes, only the last one publishes. A tag is never cancelled.
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
 
 env:
   PYTHONUNBUFFERED: "1"
@@ -155,13 +157,25 @@ jobs:
           jul --help
           jul models
 
+  # The unstable channel waits before it publishes: a push to main within that time cancels this run
+  # (concurrency above), so pushing several commits in a row publishes one dev build, the last one.
+  debounce:
+    name: wait for more pushes (${{ vars.TESTPYPI_DEBOUNCE_MINUTES || '15' }} min)
+    needs: smoke
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PUBLISH_TESTPYPI == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - run: sleep $(( ${{ vars.TESTPYPI_DEBOUNCE_MINUTES || '15' }} * 60 ))
+
   testpypi:
     name: publish to TestPyPI
-    needs: [build, smoke]
-    # the unstable channel (a push to main) and pre-release tags; a manual run never uploads
+    needs: [build, smoke, debounce]
+    # the unstable channel (a push to main, after the debounce) and pre-release tags (at once);
+    # a manual run never uploads. The debounce is skipped on a tag, hence the explicit results.
     if: >-
-      github.event_name == 'push' && (
-        (github.ref == 'refs/heads/main' && vars.PUBLISH_TESTPYPI == 'true') ||
+      !cancelled() && github.event_name == 'push' &&
+      needs.build.result == 'success' && needs.smoke.result == 'success' && (
+        (github.ref == 'refs/heads/main' && vars.PUBLISH_TESTPYPI == 'true' && needs.debounce.result == 'success') ||
         (startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.prerelease == 'true'))
     runs-on: ubuntu-24.04
     environment:

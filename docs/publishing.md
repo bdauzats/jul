@@ -27,6 +27,10 @@ git) and read by `jul.__version__`; a checkout used without installing it says `
 On a tag the workflow checks that the build is exactly the tag: a tag pushed on another commit than
 the one built, or a dirty tree, would give a `.devN`, and the build stops before anything is uploaded.
 
+Pushes to `main` are debounced: the TestPyPI job first waits `TESTPYPI_DEBOUNCE_MINUTES` (a repo
+variable, 15 by default), and a new push to `main` cancels the run still waiting. A burst of pushes
+therefore publishes one dev build, the last one. Tags do not wait and are never cancelled.
+
 To install the unstable channel:
 
 ```bash
