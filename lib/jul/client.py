@@ -14,13 +14,14 @@ held in memory at a time, since a single model can weigh several GB.
 from __future__ import annotations
 
 import math
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
 
-from . import tuning
+from . import telemetry, tuning
 from .calibration import fit_temperature_bias
 from .backbone import model_key, resolve_backend
 from .context import Context, question_digest, resolve_context
@@ -56,6 +57,7 @@ class TypeSafeClient:
         self._context_home = context_home
         self.context = resolve_context(context, context_home)
         self.method = method
+        self._telemetry = telemetry.Session()
 
     # --- model handling -----------------------------------------------------------------------
 
@@ -113,6 +115,29 @@ class TypeSafeClient:
         """
         if not questions:
             raise ValueError("system_one needs at least one question")
+        if not telemetry.active():
+            return self._system_one(state, questions, context, model, method, route_above, {})
+        started, methods = time.perf_counter(), {}
+        try:
+            response = self._system_one(state, questions, context, model, method, route_above, methods)
+        except Exception as error:
+            telemetry.record_error(self._telemetry, model=self._preset.name, backend=self._backend,
+                                   error=error, duration_ms=(time.perf_counter() - started) * 1000,
+                                   question_count=len(questions))
+            raise
+        duration_ms = (time.perf_counter() - started) * 1000
+        ctx = resolve_context(context, self._context_home) if context is not None else self.context
+        telemetry.record_request(
+            self._telemetry, model=response.model, backend=self._backend, state_text=serialize_state(state),
+            questions=questions, kinds={n: _kind_of(q) for n, q in questions.items()},
+            methods=methods, response=response, duration_ms=duration_ms,
+            context_name=getattr(ctx, "name", None))
+        return response
+
+    def _system_one(self, state: Any, questions: Mapping[str, Question], context: Context | str | None,
+                    model: str | None, method: str | None, route_above: int | None,
+                    methods: dict[str, str]) -> SystemOneResponse:
+        """`methods` is filled with how each question was read (vector, letters, head, pointer)."""
         ctx = resolve_context(context, self._context_home) if context is not None else self.context
         engine = self._engine_for(model)
         text = serialize_state(state)
@@ -138,6 +163,7 @@ class TypeSafeClient:
                 for (name, question), (kind, _, options), z in zip(direct.items(), items, logits):
                     answers[name] = _format(kind, question, options,
                                             self._calibrated(ctx, kind, question, options, z))
+                    methods[name] = "pointer"
             if routed:
                 pointer_preset, engine.preset = engine.preset, fallback_preset(
                     engine.preset.name, self.backend, fitted,
@@ -149,6 +175,7 @@ class TypeSafeClient:
                                                                          options, text, ctx, shared)
                         tokens += spent
                         answers[name] = _format(kind, question, options, probabilities)
+                        methods[name] = self._read_as(ctx, kind, "vector", question, options)
                 finally:
                     engine.preset = pointer_preset
             return SystemOneResponse(answers={n: answers[n] for n in questions}, model=self._preset.name,
@@ -162,6 +189,7 @@ class TypeSafeClient:
                                                               ctx, shared)
             tokens += spent
             answers[name] = _format(kind, question, options, probabilities)
+            methods[name] = self._read_as(ctx, kind, how, question, options)
 
         return SystemOneResponse(answers=answers, model=self._preset.name, usage=Usage(input_tokens=tokens),
                                  request_id=str(uuid.uuid4()))
@@ -182,6 +210,11 @@ class TypeSafeClient:
         if head is not None:
             return tuning.apply(head, features), tokens
         return self._calibrated(ctx, kind, question, options, scores / self._preset.tau), tokens
+
+    def _read_as(self, ctx: Context | None, kind: str, how: str, question: Question,
+                 options: list[Option]) -> str:
+        """The reading `_answer_probabilities` actually used: a tuned head overrides `how`."""
+        return "head" if self._head(ctx, kind, question, options) is not None else how
 
     def _digest(self, kind: str, question: Question, options: list[Option]) -> str:
         return question_digest(model_key(self._preset.name, self.backend), kind, question.instructions, options)
