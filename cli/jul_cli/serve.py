@@ -20,7 +20,7 @@ changing only its base URL.
     -> {"request_id": ..., "model": ..., "usage": {...},
         "answers": {"name": {"type": "choice", "choice": ..., "confidence": ..., "probabilities": {...}}}}
 
-    GET /v1/models   -> {"object": "list", "data": [{"id": ..., "object": "model"}, ...]}
+    GET /v1/models   -> {"models": [{"name": ..., "description": ..., "release_date": ...}, ...]}
 
 JuL additions, all optional and ignored by Jev clients:
 
@@ -187,9 +187,16 @@ def classify(body: Any) -> dict:
 
 
 def list_models() -> dict:
+    """The Jev shape, which the official SDK validates: {"models": [{name, description, release_date}]}."""
     from jul.presets import PRESETS, fitted_presets
-    names = sorted(set(PRESETS) | {p.name for p in fitted_presets()})
-    return {"object": "list", "data": [{"id": n, "object": "model"} for n in names]}
+    fitted = {p.name for p in fitted_presets()}
+    names = sorted(set(PRESETS) | fitted)
+    today = time.strftime("%Y-%m-%d")
+    models = [{"name": "jev-latest", "description": "Alias of the model this jul serve runs.",
+               "release_date": today}]
+    models += [{"name": n, "description": "JuL preset" + (" (added with jul models add)" if n in fitted else ""),
+                "release_date": today} for n in names]
+    return {"models": models}
 
 
 class Handler(BaseHTTPRequestHandler):

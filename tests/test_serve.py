@@ -130,7 +130,9 @@ def test_errors_follow_jev(server, body, status):
 def test_models_and_health(server):
     url, _ = server
     status, out = call(url + "/v1/models")
-    assert status == 200 and "minicpm5-2b" in [m["id"] for m in out["data"]]
+    names = [m["name"] for m in out["models"]]
+    assert status == 200 and "jev-latest" in names and "minicpm5-2b" in names
+    assert all(set(m) == {"name", "description", "release_date"} for m in out["models"])
     status, out = call(url + "/health")
     assert status == 200 and out == {"status": "ok", "model": "fake-model", "ready": True}
 
@@ -143,3 +145,23 @@ def test_api_key_bearer_or_x_api_key(server, monkeypatch):
     assert call(url + "/v1/systemone", JEV_REQUEST, {"Authorization": "Bearer k3y"})[0] == 200
     assert call(url + "/v1/systemone", JEV_REQUEST, {"x-api-key": "k3y"})[0] == 200
     assert call(url + "/health")[0] == 403
+
+
+def test_official_jev_sdk_talks_to_it(server, monkeypatch):
+    """The official Python SDK, pointed at jul serve by base_url only. Skipped when it is not installed."""
+    T = pytest.importorskip("typesafe_sdk")
+    url, _ = server
+    monkeypatch.setattr(S, "_api_key", "k3y")
+    client = T.TypeSafeClient(api_key="k3y", base_url=url)
+    r = client.system_one(
+        state={"ticket": "I was charged twice"},
+        questions={"team": T.Choice(instructions="Which team?", criteria={"billing": "payments", "technical": None}),
+                   "is_bug": T.Noul(instructions="Bug?"),
+                   "frustration": T.Score(instructions="How frustrated?", criteria=["low", "high"])},
+        model="jev-latest",
+    )
+    assert r.choices["team"].choice == "billing" and r.nouls["is_bug"].noul == 0.9
+    assert r.scores["frustration"].score == 1.0
+    assert "jev-latest" in [m.name for m in client.models.list().models]
+    with pytest.raises(T.TypeSafeAuthenticationError):
+        T.TypeSafeClient(api_key="wrong", base_url=url).system_one(state="x", questions={"q": T.Noul(instructions="?")})

@@ -2,7 +2,8 @@
 
 For a caller that is not Python (a native app, a script in another language), `jul serve` wraps the
 same client in a small HTTP server that speaks the Jev HTTP protocol. Any Jev client, SDK or plain
-`curl`, talks to it by changing only its base URL. It uses the standard library alone, so
+`curl`, talks to it by changing only its base URL: the test suite runs the official Python SDK
+(`typesafe-sdk`) against it, `system_one`, `models.list()` and a wrong key included. It uses the standard library alone, so
 `pip install jul` is enough.
 
 ```bash
@@ -42,7 +43,7 @@ The response is `SystemOneResponse.as_dict()`, the shape of the Jev API:
 | Route | What it does |
 | --- | --- |
 | `POST /v1/systemone` | one state, a map of typed questions, one answer per question |
-| `GET /v1/models` | the models this server can run (built-in presets and the ones added with `jul models add`) |
+| `GET /v1/models` | `{"models": [{"name", "description", "release_date"}]}`: `jev-latest`, the built-in presets and the ones added with `jul models add` |
 | `GET /health` | `{"status": "ok", "model": ..., "ready": true}` |
 | `POST /v1/classify` | an alias of `/v1/systemone` |
 
