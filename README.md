@@ -30,6 +30,8 @@ JuL is stopped one step before its first syllable and the answer is read straigh
 states: no monologue, no reasoning trace, no opinion on the matter — nobody asked for one. It has
 nothing to say, and it says it in 55 milliseconds.
 
+And when it is off-key, there is always `client.autotune(...)` — or `jul autotune` from the shell.
+
 ## Why JuL
 
 - **Zero-shot, no task training.** 0.857 on Jev's public benchmark (300 examples) with the default
@@ -45,6 +47,8 @@ nothing to say, and it says it in 55 milliseconds.
 - **The model is a part, not the product.** 17 backbones measured, from 90 MB encoders to 9B
   embedding models. When a better embedding model comes out, `jul models add` plugs it in the same
   day; your application code does not change.
+- **Off-key? Autotune.** `autotune(...)` fits a small head on a few labels, keeps it only if it beats
+  zero-shot in cross-validation, and never touches the model.
 - **Drop-in for the Jev SDK.** Same imports, same calls, same response shapes: change one import.
 
 ## Install
@@ -53,6 +57,8 @@ nothing to say, and it says it in 55 milliseconds.
 pip install jul
 jul setup          # picks MLX or PyTorch, installs it, downloads the default model, runs one decision
 ```
+
+Yes: a model that writes essays, installing one that answers in a single word. Neither of them minds.
 
 Or choose the backend yourself:
 
