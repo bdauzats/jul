@@ -158,10 +158,11 @@ jobs:
   testpypi:
     name: publish to TestPyPI
     needs: [build, smoke]
-    # the unstable channel (main) and pre-release tags
+    # the unstable channel (a push to main) and pre-release tags; a manual run never uploads
     if: >-
-      (github.ref == 'refs/heads/main' && vars.PUBLISH_TESTPYPI == 'true') ||
-      (startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.prerelease == 'true')
+      github.event_name == 'push' && (
+        (github.ref == 'refs/heads/main' && vars.PUBLISH_TESTPYPI == 'true') ||
+        (startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.prerelease == 'true'))
     runs-on: ubuntu-24.04
     environment:
       name: testpypi
@@ -181,8 +182,10 @@ jobs:
   pypi:
     name: publish to PyPI
     needs: [build, smoke]
-    # a final tag: v0.2.0
-    if: startsWith(github.ref, 'refs/tags/v') && needs.build.outputs.prerelease == 'false'
+    # a final tag pushed: v0.2.0; a manual run never uploads
+    if: >-
+      github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
+      needs.build.outputs.prerelease == 'false'
     runs-on: ubuntu-24.04
     environment:
       name: pypi
