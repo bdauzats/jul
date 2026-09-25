@@ -5,7 +5,8 @@ and each query only pays for its own tokens. When only intermediate layers are n
 stops right after the deepest one (the remaining layers are never computed).
 
 The framework lives behind `Backbone`: `backends/mlx.py` (Apple Silicon) and `backends/torch.py`
-(transformers: CUDA, CPU, MPS). Everything above this module only sees numpy arrays.
+(transformers: CUDA, CPU, MPS) and `backends/onnx.py` (ONNX Runtime on CPU, for deployments without
+torch). Everything above this module only sees numpy arrays.
 `Backbone(name)` picks the backend from `JUL_BACKEND`, else MLX when available, else torch.
 """
 
@@ -20,7 +21,8 @@ from pathlib import Path
 
 import numpy as np
 
-BACKENDS = ("mlx", "torch")
+#: onnx is never picked by default: it reads a model exported for it (jul/backends/onnx_export.py).
+BACKENDS = ("mlx", "torch", "onnx")
 
 #: Preset name -> repo per backend. A name missing here is used as the repo itself.
 MODELS: dict[str, dict[str, str]] = {
@@ -73,27 +75,42 @@ def repo_for(name: str, backend: str) -> str:
 
 
 class Backbone:
-    """A causal LM read by the vector method. `Backbone(name)` returns the resolved backend's subclass.
+    """A model read by the vector method. `Backbone(name)` returns the resolved backend's subclass.
 
     Subclasses set `tokenizer` (a Hugging Face tokenizer, for `encode` and the chat template) and
-    `n_layers`, and implement `forward` and `cache_prefix`.
+    `n_layers`, and implement `forward` and `cache_prefix`. A causal LM by default; an encoder
+    (jul/encoder.py) sets `architecture = "encoder"` and its input convention in `text_prefix`.
     """
 
     backend: str = ""
+    architecture: str = "decoder"
+    text_prefix: str = ""
 
     def __new__(cls, name: str, backend: str | None = None, **kwargs):
         if cls is Backbone:
             backend = resolve_backend(backend)
             if backend == "mlx":
                 from .backends.mlx import MLXBackbone as cls
+            elif backend == "onnx":
+                from .backends.onnx import ONNXBackbone as cls
             else:
-                from .backends.torch import TorchBackbone as cls
+                from .backends.torch import torch_class
+                cls = torch_class(repo_for(name, "torch"))  # noqa: PLW0642
         return super().__new__(cls)
 
     def __init__(self, name: str, backend: str | None = None):
         self.name = name
         self.repo = repo_for(name, self.backend)
         self.key = model_key(name, self.backend)
+
+    @property
+    def templates(self) -> dict[str, str]:
+        """The prompts `jul models add` fits and `formulations_for` picks from, by formulation name."""
+        if self.architecture == "encoder":
+            from .encoder import templates
+            return templates(self.text_prefix)
+        from .presets import ONE_WORD, QUESTION, QUESTION_OPTIONS
+        return {"one_word": ONE_WORD, "question_options": QUESTION_OPTIONS, "question": QUESTION}
 
     def layer_indices(self, fractions=DEFAULT_LAYER_FRACTIONS) -> list[int]:
         return sorted({max(0, min(self.n_layers - 1, round(f * self.n_layers) - 1)) for f in fractions})

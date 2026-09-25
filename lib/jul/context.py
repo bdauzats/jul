@@ -28,7 +28,9 @@ from pathlib import Path
 
 import numpy as np
 
-CONTEXT_HOME = Path.home() / ".jul" / "contexts"
+from .home import JUL_HOME
+
+CONTEXT_HOME = JUL_HOME / "contexts"
 
 #: Measured (JOURNAL §9 decies): 10 examples already capture most of the benefit (+3 points for
 #: MiniCPM, +1.7 for Qwen over the preset's own center), 50 is the best of the sizes tried, and 200
@@ -117,7 +119,7 @@ class Context:
             (out / "heads").mkdir(parents=True, exist_ok=True)
             for key, head in self.heads.items():
                 np.savez(out / "heads" / f"{key}.npz",
-                         **{k: np.asarray(v) for k, v in head.items() if k != "meta"})
+                         **{k: np.asarray(v) for k, v in head.items() if k != "meta" and not k.startswith("_")})
                 (out / "heads" / f"{key}.json").write_text(json.dumps(head["meta"], indent=2))
         (out / "meta.json").write_text(json.dumps({
             "name": name,

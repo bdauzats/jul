@@ -31,7 +31,12 @@ Issues = "https://github.com/usejul/jul/issues"
 mlx = ["mlx>=0.32; sys_platform == 'darwin' and platform_machine == 'arm64'",
        "mlx-lm>=0.31; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 torch = ["torch>=2.4", "transformers>=5.0", "accelerate"]
+# CPU inference without torch, on a model exported by `python -m jul.backends.onnx_export`.
+onnx = ["onnxruntime>=1.18", "tokenizers>=0.20", "jinja2>=3.1"]
+onnx-export = ["jul[torch]", "onnx>=1.16", "onnxscript"]
 yaml = ["pyyaml>=6"]
+# Lexical and hybrid autotune heads train with scikit-learn (and run with numpy alone).
+tune = ["scikit-learn>=1.3", "scipy>=1.10"]
 # `jul models add` downloads its calibration data with `datasets`.
 calibrate = ["datasets", "pyarrow"]
 # The lab trains its heads with MLX.

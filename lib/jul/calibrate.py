@@ -29,15 +29,23 @@ import numpy as np
 from .backbone import MODELS, Backbone, PromptTemplate, resolve_backend
 from .calibration import metrics
 from .engine import LETTERS, short_names
-from .presets import (ONE_WORD, PRESET_HOME, PRESETS, QUESTION_OPTIONS, Formulation, Preset,
-                      center_asset_name, save_preset)
+from .home import JUL_HOME
+from .presets import (
+    PRESET_HOME,
+    PRESETS,
+    Formulation,
+    Preset,
+    center_asset_name,
+    repo_fields,
+    save_preset,
+)
 
 DEV = ("yahootopics", "empathetic", "massive", "financialphrasebank")
 GENERIC = ("amazonpolarity", "appreviews", "biasframes_intent", "biasframes_offensive", "biasframes_sex",
            "capsotu", "imdb", "manifesto", "rottentomatoes", "trueteacher", "wikitoxic_insult",
            "wikitoxic_obscene", "wikitoxic_threat", "wikitoxic_toxicaggregated", "yelpreviews")
 QUESTION = "Which single label best describes the input text?"
-DATA_HOME = Path.home() / ".jul" / "calibration-data"
+DATA_HOME = JUL_HOME / "calibration-data"
 #: The BTZSC revision pinned by the Jev benchmark protocol.
 BTZSC = ("btzsc/btzsc", "fef2a2ac62b69c58670047dddf045c53d7c3cb5e")
 #: Candidate layers, as fractions of the depth. Every measured optimum sat in the upper half.
@@ -150,27 +158,29 @@ def _vectors(template: PromptTemplate, layers: list[int], texts: list[str]) -> d
     return {l: np.stack([h[l][: h[l].shape[0] // 2] for h in features]) for l in layers}
 
 
-def _question_options(labels: list[str]) -> str:
-    return QUESTION_OPTIONS.replace("{instructions}", QUESTION).replace("{options}", ", ".join(short_names(labels)))
+def _question_options(backbone: Backbone, labels: list[str]) -> str:
+    return (backbone.templates["question_options"].replace("{instructions}", QUESTION)
+            .replace("{options}", ", ".join(short_names(labels))))
 
 
 def check(backbone: Backbone, layer: int) -> list[str]:
     """Raises when the vector method cannot run on this model; returns warnings otherwise."""
     texts = ["I was charged twice for my subscription", "the app crashes on export", "do you offer annual plans?"]
-    cached = _vectors(_template(backbone, ONE_WORD), [layer], texts)[layer]
-    plain = _vectors(_template(backbone, ONE_WORD, use_prefix_cache=False), [layer], texts)[layer]
+    one_word = backbone.templates["one_word"]
+    cached = _vectors(_template(backbone, one_word), [layer], texts)[layer]
+    plain = _vectors(_template(backbone, one_word, use_prefix_cache=False), [layer], texts)[layer]
     cos = min(float(a @ b / np.linalg.norm(a) / np.linalg.norm(b)) for a, b in zip(cached, plain))
     if cos < 0.999:
         raise CalibrationError(f"The prefix cache changes the vectors (cosine {cos:.4f} < 0.999): "
                                f"this architecture is not supported by the {backbone.backend} backend yet")
-    template = _template(backbone, ONE_WORD)
+    template = _template(backbone, one_word)
     first = _vectors(template, [layer], texts[:1])[layer]
     _vectors(template, [layer], ["a much longer sentence about invoices, refunds and the billing team"])
     if not np.allclose(first, _vectors(template, [layer], texts[:1])[layer], atol=1e-3):
         raise CalibrationError("A call changes the next one: the prefix cache is not restored")
 
     warnings = []
-    if not getattr(backbone.tokenizer, "chat_template", None):
+    if backbone.architecture == "decoder" and not getattr(backbone.tokenizer, "chat_template", None):
         warnings.append("no chat template: the letters reading (Noul, Score) will not work")
     for markers, what in ((list(LETTERS), "letters"), ([str(i) for i in range(10)], "digits")):
         ids = [backbone.encode(m) for m in markers]
@@ -284,12 +294,12 @@ def extract(backbone: Backbone, dev: list[DevSet], generic_texts: list[str],
             layers: list[int]) -> tuple[list[dict], dict[int, np.ndarray]]:
     """(packs for `choose`, generic "one word" center per layer)."""
     t0 = time.perf_counter()
-    one_word = _template(backbone, ONE_WORD)
+    one_word = _template(backbone, backbone.templates["one_word"])
     generic = _vectors(one_word, layers, generic_texts)
     generic_center = {l: generic[l].mean(0) for l in layers}
     packs = []
     for d in dev:
-        qo = _template(backbone, _question_options(d.labels))
+        qo = _template(backbone, _question_options(backbone, d.labels))
         packs.append({"name": d.name, "y": d.y, **{
             key: {"X": _vectors(t, layers, d.texts), "L": _vectors(t, layers, d.labels),
                   "U": _vectors(t, layers, d.unlabeled)}
@@ -407,9 +417,10 @@ def calibrate(name: str, repo: str | None = None, backend: str | None = None, da
     np.save(home / center_asset_name(name, backend, "one_word"),
             generic_center[lay["one_word"]].astype(np.float32))
     preset = Preset(
-        name=name, repo=repo if backend == "mlx" else "", torch_repo=repo if backend == "torch" else None,
-        formulations=(Formulation("one_word", ONE_WORD, lay["one_word"]),
-                      Formulation("question_options", QUESTION_OPTIONS, lay["question_options"])),
+        name=name, **repo_fields(backend, repo),
+        formulations=(Formulation("one_word", backbone.templates["one_word"], lay["one_word"]),
+                      Formulation("question_options", backbone.templates["question_options"],
+                                  lay["question_options"])),
         tau=round(report["tau"], 5), center=report["center"],
         one_word=(lay["one_word_only"], round(report["tau_one_word"], 5)),
         latency_ms=f"~{latency:.0f}",
@@ -425,10 +436,10 @@ def calibrate(name: str, repo: str | None = None, backend: str | None = None, da
 def _latency(backbone: Backbone, dev: list[DevSet], l_ow: int, l_qo: int, per_set: int = 5) -> float:
     """p50 of one decision (both formulations, prefixes cached, each stopping at its layer), over
     texts of every dev set: their lengths range from a few words (massive) to a paragraph (yahoo)."""
-    ow = _template(backbone, ONE_WORD)
+    ow = _template(backbone, backbone.templates["one_word"])
     times = []
     for d in dev:
-        qo = _template(backbone, _question_options(d.labels))
+        qo = _template(backbone, _question_options(backbone, d.labels))
         for text in d.texts[: per_set + 1]:
             t = time.perf_counter()
             ow.run(text, layers=[l_ow])

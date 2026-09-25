@@ -8,6 +8,8 @@ GPUs older than Ampere, float32 on CPU).
 `forward_batch` runs several queries in one forward. They are padded on the right and no attention
 mask is passed: under the causal mask a real token never sees the padding after it, so its hidden
 state is the one a forward of that query alone would give.
+
+An encoder repo (BERT, XLM-R, e5...) loads as `TorchEncoderBackbone`, read as jul/encoder.py says.
 """
 
 from __future__ import annotations
@@ -18,9 +20,10 @@ from dataclasses import dataclass
 
 import numpy as np
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer
 from transformers.cache_utils import DynamicCache, DynamicLayer
 
+from .. import encoder
 from ..backbone import Backbone
 
 DTYPES = {"bfloat16": torch.bfloat16, "float16": torch.float16, "float32": torch.float32}
@@ -46,6 +49,24 @@ def default_dtype(device_type: str, capability: tuple[int, int] | None = None) -
     if device_type == "cuda" and capability is not None and capability < (8, 0):
         return torch.float16
     return torch.bfloat16
+
+
+def _device_dtype(device: str | None, dtype: torch.dtype | None) -> tuple[torch.device, torch.dtype]:
+    device = torch.device(device or os.environ.get("JUL_DEVICE") or default_device())
+    if dtype is None and os.environ.get("JUL_DTYPE"):
+        if os.environ["JUL_DTYPE"] not in DTYPES:
+            raise ValueError(f"JUL_DTYPE={os.environ['JUL_DTYPE']!r}: expected one of {', '.join(DTYPES)}")
+        dtype = DTYPES[os.environ["JUL_DTYPE"]]
+    if dtype is None:
+        capability = torch.cuda.get_device_capability(device) if device.type == "cuda" else None
+        dtype = default_dtype(device.type, capability)
+    return device, dtype
+
+
+def torch_class(repo: str) -> type[Backbone]:
+    """TorchEncoderBackbone for an encoder repo, TorchBackbone otherwise."""
+    model_type = AutoConfig.from_pretrained(repo).model_type
+    return TorchEncoderBackbone if model_type in encoder.MODEL_TYPES else TorchBackbone
 
 
 @dataclass
@@ -75,14 +96,7 @@ class TorchBackbone(Backbone):
     def __init__(self, name: str, backend: str | None = None, device: str | None = None,
                  dtype: torch.dtype | None = None):
         super().__init__(name)
-        self.device = torch.device(device or os.environ.get("JUL_DEVICE") or default_device())
-        if dtype is None and os.environ.get("JUL_DTYPE"):
-            if os.environ["JUL_DTYPE"] not in DTYPES:
-                raise ValueError(f"JUL_DTYPE={os.environ['JUL_DTYPE']!r}: expected one of {', '.join(DTYPES)}")
-            dtype = DTYPES[os.environ["JUL_DTYPE"]]
-        if dtype is None:
-            capability = torch.cuda.get_device_capability(self.device) if self.device.type == "cuda" else None
-            dtype = default_dtype(self.device.type, capability)
+        self.device, dtype = _device_dtype(device, dtype)
         self.tokenizer = AutoTokenizer.from_pretrained(self.repo)
         self.model = AutoModelForCausalLM.from_pretrained(self.repo, dtype=dtype).to(self.device).eval()
         self._decoder = self.model.get_decoder()
@@ -189,3 +203,48 @@ class TorchBackbone(Backbone):
                 raise FloatingPointError(f"non-finite hidden state at layer {k} in {self.model.dtype}: "
                                          "the model overflows this dtype, set JUL_DTYPE=float32")
         return captured, (out.cpu().numpy() if out is not None else None), cache
+
+
+class TorchEncoderBackbone(Backbone):
+    """An encoder on transformers (jul/encoder.py). A prefix is kept as tokens and run with each query."""
+
+    backend = "torch"
+    architecture = "encoder"
+
+    def __init__(self, name: str, backend: str | None = None, device: str | None = None,
+                 dtype: torch.dtype | None = None):
+        super().__init__(name)
+        self.device, dtype = _device_dtype(device, dtype)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.repo)
+        self.model = AutoModel.from_pretrained(self.repo, dtype=dtype).to(self.device).eval()
+        self.n_layers = self.model.config.num_hidden_layers
+        self.text_prefix = encoder.text_prefix(self.repo)
+        self._head, self._tail = encoder.special_tokens(self.tokenizer.encode)
+        pad = self.tokenizer.pad_token_id
+        self._pad = pad if pad is not None else 0
+        positions = min(self.tokenizer.model_max_length, self.model.config.max_position_embeddings)
+        self.max_tokens = positions - len(self._head) - len(self._tail)
+
+    def forward(self, tokens, layers=(), logits=False, pool=None, prefix=None):
+        if logits:
+            raise NotImplementedError("An encoder has no next-token logits: the letters reading needs a decoder")
+        return self.forward_batch([tokens], layers, [pool], prefix)[0], None
+
+    @torch.inference_mode()
+    def forward_batch(self, queries, layers=(), pools=None, prefix=None):
+        if not layers:
+            return [{} for _ in queries]
+        fitted = [encoder.fit(list(prefix or []), list(q), p, self.max_tokens)
+                  for q, p in zip(queries, pools or [None] * len(queries))]
+        ids, mask, spans = encoder.batch([s for s, _ in fitted], [p for _, p in fitted],
+                                         self._head, self._tail, self._pad)
+        hs = self.model(input_ids=torch.from_numpy(ids).to(self.device),
+                        attention_mask=torch.from_numpy(mask).to(self.device), output_hidden_states=True).hidden_states
+        # hidden_states[0] is the embedding output: layer i is hidden_states[i + 1]
+        return encoder.features({l: hs[l + 1].float().cpu().numpy() for l in layers}, mask, spans)
+
+    def cache_prefix(self, tokens) -> list[int]:
+        return list(tokens)
+
+    def last_hidden(self, tokens, prefix=None):
+        raise NotImplementedError("The pointer method reads a decoder")

@@ -22,7 +22,7 @@ def test_the_backend_comes_from_the_argument_then_the_environment(monkeypatch):
     assert resolve_backend() == "torch"
     assert resolve_backend("mlx") == "mlx"
     with pytest.raises(ValueError):
-        resolve_backend("onnx")
+        resolve_backend("tensorflow")
 
 
 @pytest.mark.skipif(not HAS_MLX, reason="MLX is not installed")

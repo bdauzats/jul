@@ -18,11 +18,19 @@ from pathlib import Path
 
 import numpy as np
 
+from .home import JUL_HOME
+
 ASSETS = Path(__file__).resolve().parent / "assets"
-PRESET_HOME = Path.home() / ".jul" / "presets"
+PRESET_HOME = JUL_HOME / "presets"
 
 ONE_WORD = 'This text: "{state}" means in one word: "'
 QUESTION_OPTIONS = '{instructions}\nPossible answers: {options}.\nText: "{state}"\nIn one word, the answer is: "'
+#: The question without its options: a short prefix whatever the number of options. With a tuned head,
+#: listing the options adds nothing on Banking77's 72 (0.910 without, 0.900 with, jul-lambda
+#: 2026-09-25) and 3 points on emotion's 6 (0.852 against 0.884).
+QUESTION = '{instructions}\nText: "{state}"\nIn one word, the answer is: "'
+#: Formulations a question can be read with, by name (see `formulations_for`).
+FORMULATION_NAMES = ("one_word", "question_options", "question")
 
 
 @dataclass(frozen=True)
@@ -47,6 +55,7 @@ class Preset:
     center: str = "options"
     notes: str = ""
     torch_repo: str | None = None  # transformers repo; None: no torch backend for this preset
+    onnx_repo: str | None = None   # directory written by jul.backends.onnx_export; None: no onnx
     #: (layer, tau) of the single-formulation "one word" variant; None: see ONE_WORD_ONLY.
     one_word: tuple[int, float] | None = None
     #: The backend the numbers were fitted on; None for the built-in presets (MLX).
@@ -69,7 +78,8 @@ class Preset:
     @property
     def repos(self) -> dict[str, str]:
         return {**({"mlx": self.repo} if self.repo else {}),
-                **({"torch": self.torch_repo} if self.torch_repo else {})}
+                **({"torch": self.torch_repo} if self.torch_repo else {}),
+                **({"onnx": self.onnx_repo} if self.onnx_repo else {})}
 
     def generic_center(self, formulation: Formulation, backend: str = "mlx") -> np.ndarray | None:
         """The asset fitted with this backend's weights, else the MLX one."""
@@ -95,6 +105,7 @@ class Preset:
     def from_json(cls, d: dict, asset_dir: Path) -> "Preset":
         repos = d["repos"]
         return cls(name=d["name"], repo=repos.get("mlx", ""), torch_repo=repos.get("torch"),
+                   onnx_repo=repos.get("onnx"),
                    formulations=tuple(Formulation(**f) for f in d["formulations"]),
                    tau=d["tau"], center=d["center"],
                    one_word=tuple(d["one_word"]) if d.get("one_word") else None,
@@ -102,6 +113,39 @@ class Preset:
                    notes=d.get("notes", ""), backend=d.get("backend"), asset_dir=asset_dir,
                    calibration=d.get("calibration"), method=d.get("method", "vector"),
                    routing=d.get("routing"))
+
+
+def formulations_for(preset: Preset, names) -> tuple[Formulation, ...]:
+    """The preset's formulations picked by name. "question" is read at the layer of the preset's
+    question_options formulation (the same kind of prompt, without the options)."""
+    by_name = {f.name: f for f in preset.formulations}
+    out = []
+    for name in names:
+        if name in by_name:
+            out.append(by_name[name])
+        elif name == "question" and "question_options" in by_name:
+            out.append(Formulation("question", question_template(by_name["question_options"].template),
+                                   by_name["question_options"].layer))
+        else:
+            raise ValueError(f"unknown formulation {name!r} for {preset.name!r}: expected one of "
+                             f"{', '.join(sorted(set(by_name) | {'question'}))}")
+    return tuple(out)
+
+
+def question_template(question_options: str) -> str:
+    """A "question_options" template without its options: QUESTION for QUESTION_OPTIONS, and the
+    same for an encoder's (jul/encoder.py)."""
+    from .encoder import OPTIONS_CLAUSES
+    for clause in OPTIONS_CLAUSES:
+        if clause in question_options:
+            return question_options.replace(clause, "")
+    raise ValueError(f"no options clause to remove in {question_options!r}")
+
+
+def repo_fields(backend: str, repo: str) -> dict:
+    """The Preset fields that give `repo` to `backend` and no repo to the others."""
+    return {"repo": repo if backend == "mlx" else "", "torch_repo": repo if backend == "torch" else None,
+            "onnx_repo": repo if backend == "onnx" else None}
 
 
 def center_asset_name(name: str, backend: str, formulation: str) -> str:
@@ -127,11 +171,11 @@ def save_preset(preset: Preset, home: Path | None = None) -> Path:
 
 def pointer_preset(name: str, repo: str, backend: str) -> Preset:
     """A decision model's preset: nothing to fit, its format and temperature live in its decision.json."""
-    from .decision import DecisionSpec
     from huggingface_hub import snapshot_download
+
+    from .decision import DecisionSpec
     spec = DecisionSpec.load(repo if Path(repo).is_dir() else snapshot_download(repo, allow_patterns=["*.json", "*.npz"]))
-    return Preset(name=name, repo=repo if backend == "mlx" else "", backend=backend,
-                  torch_repo=repo if backend == "torch" else None, formulations=(), tau=1.0,
+    return Preset(name=name, **repo_fields(backend, repo), backend=backend, formulations=(), tau=1.0,
                   latency_ms="?", quality="decision model (pointer method)", method="pointer",
                   notes=f"format and temperature ({spec.temperature:.3f}) read from {repo}/decision.json")
 

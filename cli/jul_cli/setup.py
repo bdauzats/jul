@@ -25,9 +25,17 @@ from jul.backbone import BACKENDS
 from jul.presets import DEFAULT_MODEL
 
 #: Modules each backend imports; one missing means the extra is not installed.
-BACKEND_MODULES = {"mlx": ("mlx", "mlx_lm"), "torch": ("torch", "transformers", "accelerate")}
+BACKEND_MODULES = {"mlx": ("mlx", "mlx_lm"), "torch": ("torch", "transformers", "accelerate"),
+                   "onnx": ("onnxruntime", "tokenizers", "jinja2")}
 #: The files a model load reads (the mlx_lm list, plus chat templates): no .bin / .gguf / .pth twins.
 WEIGHT_PATTERNS = ["*.json", "*.safetensors", "*.py", "tokenizer.model", "*.tiktoken", "*.txt", "*.jinja"]
+#: An onnx export (jul/backends/onnx_export.py) holds the graph and its weights instead of safetensors.
+ONNX_PATTERNS = ["*.json", "*.onnx", "*.onnx.data", "tokenizer.model", "*.tiktoken", "*.txt", "*.jinja"]
+
+
+def weight_patterns(backend: str | None) -> list[str]:
+    """Only the onnx backend fetches .onnx files: many Hub repos ship an onnx/ twin of their weights."""
+    return ONNX_PATTERNS if backend == "onnx" else WEIGHT_PATTERNS
 
 
 def _step(label: str, msg: str) -> None:
@@ -109,27 +117,28 @@ def ensure_preset(model: str, backend: str):
     return preset, repo
 
 
-def ensure_weights(repo: str) -> None:
+def ensure_weights(repo: str, backend: str | None = None) -> None:
+    patterns = weight_patterns(backend)
     if Path(repo).is_dir():
-        if not weights_cached(repo):
-            raise SystemExit(f"{repo} holds no .safetensors weights")
+        if not weights_cached(repo, backend):
+            raise SystemExit(f"{repo} holds no {'.onnx' if backend == 'onnx' else '.safetensors'} weights")
         _step("weights", f"{repo} (local directory)")
         return
     from huggingface_hub import snapshot_download
     from huggingface_hub.errors import LocalEntryNotFoundError
     try:
-        snapshot_download(repo, allow_patterns=WEIGHT_PATTERNS, local_files_only=True)
+        snapshot_download(repo, allow_patterns=patterns, local_files_only=True)
         _step("weights", f"{repo} (downloaded)")
         return
     except LocalEntryNotFoundError:
         _step("weights", f"{repo}: downloading ...")
-    path = snapshot_download(repo, allow_patterns=WEIGHT_PATTERNS)
+    path = snapshot_download(repo, allow_patterns=patterns)
     _step("weights", f"{repo} -> {path}")
 
 
-def weights_cached(repo: str) -> bool:
+def weights_cached(repo: str, backend: str | None = None) -> bool:
     if Path(repo).is_dir():   # a local model directory (e.g. a decision model added with `jul models add`)
-        return any(Path(repo).glob("*.safetensors"))
+        return any(Path(repo).glob("*.onnx" if backend == "onnx" else "*.safetensors"))
     try:
         from huggingface_hub import snapshot_download
         from huggingface_hub.errors import LocalEntryNotFoundError
@@ -139,7 +148,7 @@ def weights_cached(repo: str) -> bool:
     was_disabled = are_progress_bars_disabled()
     disable_progress_bars()   # a cache lookup, not a download: no "Fetching n files" bar
     try:
-        snapshot_download(repo, allow_patterns=WEIGHT_PATTERNS, local_files_only=True)
+        snapshot_download(repo, allow_patterns=weight_patterns(backend), local_files_only=True)
     except LocalEntryNotFoundError:
         return False
     finally:
@@ -169,7 +178,7 @@ def require_setup(model: str | None, backend: str | None) -> None:
     except ValueError as exc:
         raise SystemExit(str(exc)) from None
     repo = preset.repos.get(resolved)
-    if repo and not weights_cached(repo):
+    if repo and not weights_cached(repo, resolved):
         raise SystemExit(f"{preset.name} is not downloaded for {resolved} ({repo}). "
                          f"Run: {fix}")
 
@@ -200,7 +209,7 @@ def run(model: str | None, backend: str | None, install: bool = True, skip_check
     print(f"jul setup: {model} on {backend}")
     ensure_backend(backend, install)
     preset, repo = ensure_preset(model, backend)
-    ensure_weights(repo)
+    ensure_weights(repo, backend)
     if not skip_check:
         check(preset.name, backend)
     print("\nReady. Try:\n  jul ask choice \"Which team should handle this ticket?\" "
