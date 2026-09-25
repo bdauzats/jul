@@ -1,35 +1,44 @@
-"""A tiny local HTTP server around `TypeSafeClient`, for callers that are not Python.
+"""A tiny local HTTP server around `TypeSafeClient` that speaks the Jev (System One) HTTP protocol.
 
     jul serve --model minicpm5-2b --port 8577
 
-Binds to 127.0.0.1 by default (local only): the model runs on this machine and the server is a
-bridge for a local process — Wispr's meeting classifier, in practice — not a public API. It can be
-bound elsewhere with `--host`, in which case an API key (`--api-key` or `$JUL_API_KEY`) should be
-set; requests then need a matching `x-api-key` header. Built on the standard library alone, so
-`pip install jul` is enough; no extra dependency.
+The wire format is TypeSafe's: any Jev client (the official SDKs, or plain `curl`) talks to it by
+changing only its base URL.
 
-Privacy: the request `state` (for Wispr, private meeting speech) is never logged. Only
-non-sensitive metadata (question count, latency) is logged at INFO.
-
-The request and response shapes mirror JuL's hosted/Lambda deployment, so a client can talk to
-either without change:
-
-    POST /v1/classify            (requires x-api-key when a key is configured)
+    POST /v1/systemone
+    Authorization: Bearer <key>          (only when a key is configured)
     {
-      "state": {"text": "..."} | "a plain string",
+      "model": "jev-latest",             # optional here; a jev-* name means the server's model
+      "state": "a string" | {...} | [...],
       "questions": {
-        "name": {"type": "choice|noul|score", "instructions": "...", "criteria": {...} | [...]}
-      },
-      "model": "minicpm5-2b"        # optional, overrides the server default for this call
+        "name": {"type": "choice", "instructions": "...", "criteria": {"key": "description" | null}},
+        "name": {"type": "noul",   "instructions": "...", "criteria": {"true": "...", "false": "..."}},
+        "name": {"type": "score",  "instructions": "...", "criteria": ["lowest", "...", "highest"]}
+      }
     }
 
-    -> {"model": ..., "latency_ms": ..., "choices": {...}, "nouls": {...}, "scores": {...}}
+    -> {"request_id": ..., "model": ..., "usage": {...},
+        "answers": {"name": {"type": "choice", "choice": ..., "confidence": ..., "probabilities": {...}}}}
 
-    GET /health   -> {"status": "ok", "model": ..., "ready": bool}   (also requires x-api-key when set)
+    GET /v1/models   -> {"object": "list", "data": [{"id": ..., "object": "model"}, ...]}
+
+JuL additions, all optional and ignored by Jev clients:
+
+- request: `context` (name of a saved context), `method`, `route_above`, as in `system_one`;
+  a Choice's `criteria` may also be a plain list of keys, as in the library.
+- response: `jul: {"latency_ms": ...}`.
+- routes: `GET /health`; `POST /v1/classify` is an alias of `/v1/systemone`.
+
+Binds to 127.0.0.1 by default (local only). Bound elsewhere with `--host`, it should be given a key
+(`--api-key` or `$JUL_API_KEY`); requests then need `Authorization: Bearer <key>` (as Jev) or
+`x-api-key: <key>`. Standard library only, so `pip install jul` is enough.
+
+The request `state` is never logged: only the question count and the latency are.
 """
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import os
@@ -40,15 +49,33 @@ from typing import Any
 
 logger = logging.getLogger("jul.serve")
 
-# One client for the whole process, loaded on the first call (or by --warmup at startup). MLX and the
-# torch backends hold a single model in memory, so the client is a shared, guarded singleton.
+#: One client for the whole process, loaded on the first call (or at startup unless --no-warmup).
+#: The backends hold a single model in memory, so the client is a shared, guarded singleton.
 _client = None
 _client_lock = threading.Lock()
+#: Inference is serialised: one model, one forward pass at a time.
+_infer_lock = threading.Lock()
 _default_model: str | None = None
 _default_backend: str | None = None
-#: When set, every classify request must carry a matching `x-api-key` header.
-#: None means no authentication (safe only when bound to localhost).
+#: When set, every request must carry it. None means no authentication (safe only on loopback).
 _api_key: str | None = None
+
+MAX_BODY = 10_000_000
+SYSTEMONE_PATHS = ("/v1/systemone", "/v1/classify", "/classify")
+EXTRAS = ("context", "method", "route_above")
+
+
+class RequestError(Exception):
+    """A request the protocol refuses: `status` and `kind` follow the Jev API."""
+
+    def __init__(self, status: int, kind: str, message: str, detail: list | None = None):
+        super().__init__(message)
+        self.status, self.kind, self.message, self.detail = status, kind, message, detail
+
+    def payload(self) -> dict:
+        if self.detail is not None:  # 422: the list of fields, as a validation error
+            return {"detail": self.detail}
+        return {"error": {"type": self.kind, "message": self.message}}
 
 
 def get_client():
@@ -58,85 +85,125 @@ def get_client():
         return _client
     with _client_lock:
         if _client is None:
-            from jul import TypeSafeClient
+            from jul import Choice, TypeSafeClient
             logger.info("loading JuL client (model=%s, backend=%s)", _default_model, _default_backend)
             start = time.time()
-            _client = TypeSafeClient(model=_default_model, backend=_default_backend)
-            # A warmup call forces the weights to load now, so the first real request is not slow.
-            from jul import Choice
-            _client.system_one(state={"text": "warmup"},
-                               questions={"q": Choice(instructions="test?",
-                                                      criteria={"a": "a", "b": "b"})})
+            client = TypeSafeClient(model=_default_model, backend=_default_backend)
+            # Forces the weights to load now, so the first real request is not the slow one.
+            client.system_one(state="warmup",
+                              questions={"q": Choice(instructions="test?", criteria={"a": "a", "b": "b"})})
+            _client = client
             logger.info("JuL client ready in %.1fs", time.time() - start)
     return _client
 
 
-def build_questions(questions_data: dict) -> dict:
-    """Build JuL question objects from the request. Same mapping as the Lambda handler."""
-    from jul import Choice, Noul, Score
+def _missing(field: str, where: tuple = ("body",)) -> dict:
+    return {"loc": [*where, field], "msg": "Field required", "type": "missing"}
 
+
+def _text(value: Any) -> str:
+    """A description as the prompt reads it: null is empty (the key speaks), JSON stays JSON."""
+    if value is None:
+        return ""
+    return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+
+
+def build_questions(questions_data: Any) -> dict:
+    """JuL question objects from the Jev request `questions` map."""
+    from jul import Choice, Noul, NoulCriteria, Score
+
+    if not isinstance(questions_data, dict) or not questions_data:
+        raise RequestError(422, "invalid_request", "questions must be a non-empty map",
+                           detail=[_missing("questions")])
     questions: dict[str, Any] = {}
     for name, q in questions_data.items():
-        q_type = q.get("type", "choice").lower()
-        instructions = q.get("instructions", "")
-        criteria = q.get("criteria", {})
-        if q_type == "choice":
-            questions[name] = Choice(
-                instructions=instructions,
-                criteria=criteria if isinstance(criteria, dict)
-                else {str(i): c for i, c in enumerate(criteria)},
-            )
-        elif q_type == "noul":
-            questions[name] = Noul(instructions=instructions)
-        elif q_type == "score":
-            questions[name] = Score(
-                instructions=instructions,
-                criteria=criteria if isinstance(criteria, list) else list(criteria.values()),
-            )
+        if not isinstance(q, dict):
+            raise RequestError(400, "api_usage_error", f"question {name!r} must be an object")
+        kind = str(q.get("type", "")).lower()
+        instructions = _text(q.get("instructions", ""))
+        criteria = q.get("criteria")
+        if kind == "noul":
+            if isinstance(criteria, dict):
+                questions[name] = Noul(instructions=instructions,
+                                       criteria=NoulCriteria(true=_text(criteria.get("true")),
+                                                             false=_text(criteria.get("false"))))
+            else:
+                questions[name] = Noul(instructions=instructions)
+        elif kind == "choice":
+            if criteria is None:
+                raise RequestError(422, "invalid_request", f"question {name!r}: a choice needs criteria",
+                                   detail=[_missing("criteria", ("body", "questions", name))])
+            if isinstance(criteria, dict):
+                criteria = {str(k): _text(v) for k, v in criteria.items()}
+            elif isinstance(criteria, list):  # JuL addition: a plain list of keys
+                criteria = [str(k) for k in criteria]
+            else:
+                raise RequestError(400, "api_usage_error", f"question {name!r}: criteria must be a map")
+            questions[name] = Choice(instructions=instructions, criteria=criteria)
+        elif kind == "score":
+            if not isinstance(criteria, list):
+                raise RequestError(422, "invalid_request",
+                                   f"question {name!r}: a score needs an ordered list of levels",
+                                   detail=[_missing("criteria", ("body", "questions", name))])
+            questions[name] = Score(instructions=instructions, criteria=[_text(c) for c in criteria])
         else:
-            raise ValueError(f"Unknown question type: {q_type!r} for question {name!r}")
+            raise RequestError(400, "api_usage_error",
+                               f"Invalid request. Unknown question type {kind!r} for {name!r} "
+                               "(choice, noul or score)")
     return questions
 
 
-def format_response(response, latency_ms: float) -> dict:
-    """Format a `SystemOneResponse` as the API JSON. Same shape as the Lambda handler."""
-    result: dict[str, Any] = {
-        "model": response.model,
-        "latency_ms": round(latency_ms, 2),
-        "usage": {"input_tokens": response.usage.input_tokens if response.usage else None},
-    }
-    if response.choices:
-        result["choices"] = {
-            name: {"choice": c.choice,
-                   "confidence": round(c.confidence, 4),
-                   "probabilities": {k: round(v, 4) for k, v in c.probabilities.items()}}
-            for name, c in response.choices.items()
-        }
-    if response.nouls:
-        result["nouls"] = {name: {"noul": round(n.noul, 4)} for name, n in response.nouls.items()}
-    if response.scores:
-        result["scores"] = {
-            name: {"score": round(s.score, 4),
-                   "confidence": round(s.confidence, 4),
-                   "probabilities": {k: round(v, 4) for k, v in s.probabilities.items()}}
-            for name, s in response.scores.items()
-        }
+def local_model(requested: Any) -> str | None:
+    """The model to run: a `jev-*` name (what a Jev client sends) means the server's own model."""
+    if requested is None or requested == "":
+        return None
+    if not isinstance(requested, str):
+        raise RequestError(400, "api_usage_error", "model must be a string")
+    return None if requested.lower().startswith("jev-") else requested
+
+
+def classify(body: Any) -> dict:
+    """One /v1/systemone call: the Jev request in, the Jev response (plus `jul`) out."""
+    if not isinstance(body, dict):
+        raise RequestError(400, "api_usage_error", "Invalid request. The body must be a JSON object")
+    if "state" not in body:
+        raise RequestError(422, "invalid_request", "state is required", detail=[_missing("state")])
+    questions = build_questions(body.get("questions"))
+    model = local_model(body.get("model"))
+    extras = {k: body[k] for k in EXTRAS if body.get(k) is not None}
+
+    client = get_client()
+    start = time.time()
+    try:
+        with _infer_lock:
+            response = client.system_one(state=body["state"], questions=questions, model=model, **extras)
+    except ValueError as e:  # unknown model, a Choice with one option, a Score with one level...
+        raise RequestError(400, "api_usage_error", str(e)) from e
+    latency_ms = (time.time() - start) * 1000
+    logger.info("systemone: %d question(s), %.0f ms", len(questions), latency_ms)
+    result = response.as_dict()
+    result["jul"] = {"latency_ms": round(latency_ms, 2)}
     return result
 
 
+def list_models() -> dict:
+    from jul.presets import PRESETS, fitted_presets
+    names = sorted(set(PRESETS) | {p.name for p in fitted_presets()})
+    return {"object": "list", "data": [{"id": n, "object": "model"} for n in names]}
+
+
 class Handler(BaseHTTPRequestHandler):
-    # Quieter logs: one line per request through the module logger, not stderr prints.
-    def log_message(self, fmt, *args):
+    def log_message(self, fmt, *args):  # through the module logger, at DEBUG, not stderr
         logger.debug("%s - %s", self.address_string(), fmt % args)
 
     def _authorized(self) -> bool:
-        """True when no key is configured, or the request carries the right one.
-        Uses a constant-time compare to avoid leaking the key via timing."""
+        """True when no key is configured, or the request carries it (Bearer or x-api-key)."""
         if _api_key is None:
             return True
-        import hmac
-        provided = self.headers.get("x-api-key", "")
-        return hmac.compare_digest(provided, _api_key)
+        auth = self.headers.get("Authorization", "")
+        bearer = auth[7:].strip() if auth[:7].lower() == "bearer " else ""
+        provided = bearer or self.headers.get("x-api-key", "")
+        return hmac.compare_digest(provided.encode(), _api_key.encode())
 
     def _send(self, code: int, payload: dict) -> None:
         body = json.dumps(payload).encode("utf-8")
@@ -146,89 +213,77 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self) -> None:
-        if self.path.rstrip("/") in ("/health", "/v1/health"):
-            if not self._authorized():
-                self._send(401, {"error": "unauthorized: missing or invalid x-api-key"})
-                return
-            self._send(200, {"status": "ok", "model": _default_model, "ready": _client is not None})
+    def _refuse(self) -> None:
+        if "Authorization" in self.headers or "x-api-key" in self.headers:
+            self._send(401, {"error": {"type": "authentication_error",
+                                       "message": "Cannot authenticate with the server: invalid API key"}})
         else:
-            self._send(404, {"error": "not found", "path": self.path})
+            self._send(403, {"error": {"type": "authentication_error",
+                                       "message": "Must supply an API key! (Authorization: Bearer <key>)"}})
 
-    def do_POST(self) -> None:
-        if self.path.rstrip("/") not in ("/v1/classify", "/classify"):
-            self._send(404, {"error": "not found", "path": self.path})
+    def do_GET(self) -> None:
+        path = self.path.split("?")[0].rstrip("/")
+        if path not in ("/health", "/v1/health", "/v1/models"):
+            self._send(404, {"error": {"type": "not_found", "message": f"no route {self.path}"}})
             return
         if not self._authorized():
-            self._send(401, {"error": "unauthorized: missing or invalid x-api-key"})
+            self._refuse()
+            return
+        if path == "/v1/models":
+            self._send(200, list_models())
+        else:
+            self._send(200, {"status": "ok", "model": _client.model if _client else _default_model,
+                             "ready": _client is not None})
+
+    def do_POST(self) -> None:
+        if self.path.split("?")[0].rstrip("/") not in SYSTEMONE_PATHS:
+            self._send(404, {"error": {"type": "not_found", "message": f"no route {self.path}"}})
+            return
+        if not self._authorized():
+            self._refuse()
             return
         try:
             length = int(self.headers.get("Content-Length", 0))
-            # Cap the body to guard against a malformed/oversized request while
-            # leaving ample room for a large state: a 32k-token context is well
-            # under 1 MB even in multi-byte scripts, so 10 MB is generous headroom.
-            if length > 10_000_000:
-                self._send(413, {"error": "request body too large"})
-                return
-            raw = self.rfile.read(length) if length else b"{}"
-            body = json.loads(raw or b"{}")
-        except (ValueError, json.JSONDecodeError) as e:
-            self._send(400, {"error": f"invalid JSON: {e}"})
-            return
-
-        questions_data = body.get("questions") or {}
-        if not questions_data:
-            self._send(400, {"error": "missing required field: questions"})
-            return
-
-        try:
-            client = get_client()
-            questions = build_questions(questions_data)
-            state = body.get("state", {})
-            model = body.get("model")  # optional per-call override
-            start = time.time()
-            response = client.system_one(state=state, questions=questions, model=model)
-            result = format_response(response, (time.time() - start) * 1000)
-            # Privacy: never log the state — for Wispr it is private meeting
-            # speech. Log only non-sensitive metadata (question count, latency).
-            # Enable DEBUG to see question names, still never the transcript.
-            logger.info("classify: %d question(s), %.0f ms",
-                        len(questions_data), (time.time() - start) * 1000)
-            logger.debug("classify question names: %s", list(questions_data.keys()))
-            self._send(200, result)
-        except ValueError as e:
-            self._send(400, {"error": str(e), "type": type(e).__name__})
-        except Exception as e:  # noqa: BLE001 - surface any inference error as 500 with its type
+            if length > MAX_BODY:
+                raise RequestError(413, "max_tokens_exceeded", "request body too large")
+            raw = self.rfile.read(length) if length else b""
+            try:
+                body = json.loads(raw or b"{}")
+            except ValueError as e:
+                raise RequestError(400, "api_usage_error", f"Invalid request. Invalid JSON: {e}") from e
+            self._send(200, classify(body))
+        except RequestError as e:
+            self._send(e.status, e.payload())
+        except Exception as e:  # noqa: BLE001 - any inference failure is a 500, with its type
             logger.exception("inference failed")
-            self._send(500, {"error": str(e), "type": type(e).__name__})
+            self._send(500, {"error": {"type": type(e).__name__, "message": str(e)}})
+
+
+def make_server(host: str = "127.0.0.1", port: int = 8577) -> ThreadingHTTPServer:
+    return ThreadingHTTPServer((host, port), Handler)
 
 
 def serve(model: str | None = None, backend: str | None = None,
           host: str = "127.0.0.1", port: int = 8577, warmup: bool = True,
           api_key: str | None = None) -> None:
-    """Run the local classify server until interrupted.
-
-    Binds to 127.0.0.1 by default (local only). When `api_key` is set, every
-    request (including `/health`) must send a matching `x-api-key` header.
-    """
+    """Run the server until interrupted. See the module docstring for the protocol."""
     global _default_model, _default_backend, _api_key
     _default_model, _default_backend = model, backend
     _api_key = api_key or os.environ.get("JUL_API_KEY") or None
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    # Security posture: warn loudly when exposing beyond loopback without a key.
-    is_local = host in ("127.0.0.1", "::1", "localhost")
-    if not is_local and _api_key is None:
-        logger.warning("jul serve is bound to %s WITHOUT an API key — anyone on the "
-                       "network can query it. Set --api-key or $JUL_API_KEY.", host)
+    if host not in ("127.0.0.1", "::1", "localhost") and _api_key is None:
+        logger.warning("jul serve is bound to %s WITHOUT an API key: anyone on the network can query "
+                       "it. Set --api-key or $JUL_API_KEY.", host)
     if _api_key is not None:
-        logger.info("API key authentication is enabled (x-api-key required).")
+        logger.info("API key authentication is enabled (Authorization: Bearer or x-api-key).")
 
     if warmup:
-        get_client()  # load and warm the model before accepting requests
+        get_client()
 
-    server = ThreadingHTTPServer((host, port), Handler)
-    logger.info("jul serve listening on http://%s:%d  (POST /v1/classify, GET /health)", host, port)
+    server = make_server(host, port)
+    logger.info("jul serve listening on http://%s:%d  (POST /v1/systemone, GET /v1/models, GET /health)",
+                host, port)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -69,7 +69,8 @@ class ChoiceAnswer:
     confidence: float
 
     def as_dict(self) -> dict:
-        return {"choice": self.choice, "probabilities": self.probabilities, "confidence": self.confidence}
+        return {"type": "choice", "choice": self.choice, "probabilities": self.probabilities,
+                "confidence": self.confidence}
 
 
 @dataclass
@@ -77,7 +78,7 @@ class NoulAnswer:
     noul: float
 
     def as_dict(self) -> dict:
-        return {"noul": self.noul}
+        return {"type": "noul", "noul": self.noul}
 
 
 @dataclass
@@ -88,7 +89,7 @@ class ScoreAnswer:
     confidence: float
 
     def as_dict(self) -> dict:
-        return {"score": self.score, "legend": self.legend,
+        return {"type": "score", "score": self.score, "legend": self.legend,
                 "probabilities": self.probabilities, "confidence": self.confidence}
 
 

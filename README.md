@@ -269,21 +269,20 @@ browser agent that books a train on SNCF Connect.
 
 ## Serve it over HTTP
 
-For a caller that is not Python — a native app, a script in another language — `jul serve` wraps the
-same client in a tiny HTTP server (standard library only, so `pip install jul` is enough):
+For a caller that is not Python (a native app, a script in another language), `jul serve` wraps the
+same client in a tiny HTTP server that speaks **the Jev HTTP protocol**: any Jev client, SDK or plain
+`curl`, talks to it by changing only its base URL. Standard library only, so `pip install jul` is enough.
 
 ```bash
 jul serve                              # 127.0.0.1:8577, default model
-jul serve --model wemm-4b --port 8577
+jul serve --model minicpm5-2b --port 8577
 ```
 
-It answers the same request/response shape as JuL's hosted deployment, so a client can talk to either
-without change:
-
 ```bash
-curl -s http://127.0.0.1:8577/v1/classify \
+curl -s http://127.0.0.1:8577/v1/systemone \
   -H 'Content-Type: application/json' \
   -d '{
+    "model": "jev-latest",
     "state": "I was charged twice for my subscription this month.",
     "questions": {
       "team": {"type": "choice", "instructions": "Which team should handle this ticket?",
@@ -291,22 +290,33 @@ curl -s http://127.0.0.1:8577/v1/classify \
       "is_bug": {"type": "noul", "instructions": "Does this report a software bug?"}
     }
   }'
-# -> {"model": ..., "latency_ms": ..., "choices": {...}, "nouls": {...}}
+# -> {"request_id": ..., "model": "wemm-4b-4bit", "usage": {...},
+#     "answers": {"team": {"type": "choice", "choice": "billing", ...}, "is_bug": {"type": "noul", "noul": ...}},
+#     "jul": {"latency_ms": ...}}
 
-curl -s http://127.0.0.1:8577/health     # {"status": "ok", "model": ..., "ready": true}
+curl -s http://127.0.0.1:8577/v1/models   # the models this server can run
+curl -s http://127.0.0.1:8577/health      # {"status": "ok", "model": ..., "ready": true}
 ```
 
-It **binds to 127.0.0.1 by default** — local only, the same on-device promise as the library. Bind it
+A `jev-*` model name means the server's own model; a JuL preset name picks that one. Errors follow
+Jev too: 400 for an unknown question type or model, 422 with a `detail` list for a missing field,
+401/403 for a wrong or missing key.
+
+JuL adds, without changing anything a Jev client reads: `context`, `method` and `route_above` in the
+request (as in `system_one`), a plain list of keys as a Choice's `criteria`, a `jul` object in the
+response, `GET /health`, and `POST /v1/classify` as an alias.
+
+It **binds to 127.0.0.1 by default**: local only, the same on-device promise as the library. Bind it
 elsewhere with `--host`, and set an API key so only authorised callers get through:
 
 ```bash
 JUL_API_KEY=secret jul serve --host 0.0.0.0        # or: jul serve --api-key secret
-curl ... -H 'x-api-key: secret' http://<host>:8577/v1/classify
+curl ... -H "Authorization: Bearer $JUL_API_KEY" http://<host>:8577/v1/systemone
 ```
 
-With a key set, every request (including `/health`) must carry a matching `x-api-key` header; without
-one, `jul serve` warns when bound beyond loopback. The request `state` is never logged —
-only the question count and latency — so private input stays private.
+With a key set, every request (including `/health`) must carry it, as `Authorization: Bearer` like
+Jev or as `x-api-key`; without one, `jul serve` warns when bound beyond loopback. The request `state`
+is never logged, only the question count and latency, so private input stays private.
 
 ## How it answers
 
