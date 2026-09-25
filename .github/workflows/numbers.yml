@@ -116,6 +116,15 @@ jobs:
               + `The README quotes 0.17 ms (Apple Silicon) — latency is machine-dependent and not `
               + `asserted by CI. Accuracies are.</sub>`;
             const body = header + report + footer;
+            // Always on the run page: works for every PR, forks included.
+            await core.summary.addRaw(body).write();
+            // A PR from a fork gets a read-only GITHUB_TOKEN whatever `permissions:` says, so
+            // commenting would fail with a 403 and turn a reproduced run red. Skip it there.
+            const head = context.payload.pull_request.head.repo;
+            if (!head || head.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+              core.notice('PR from a fork: the token is read-only, so the report is in the job summary instead of a comment.');
+              return;
+            }
             const marker = '<!-- jul-numbers -->';
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner, repo: context.repo.repo,
