@@ -267,6 +267,47 @@ itself, re-ranking by intent, notification triage, prompt-difficulty routing, 50
 tickets triaged in 668 s at $0, `autotune` taking a fast model from 82.0% to 96.5%, and an on-device
 browser agent that books a train on SNCF Connect.
 
+## Serve it over HTTP
+
+For a caller that is not Python — a native app, a script in another language — `jul serve` wraps the
+same client in a tiny HTTP server (standard library only, so `pip install jul` is enough):
+
+```bash
+jul serve                              # 127.0.0.1:8577, default model
+jul serve --model wemm-4b --port 8577
+```
+
+It answers the same request/response shape as JuL's hosted deployment, so a client can talk to either
+without change:
+
+```bash
+curl -s http://127.0.0.1:8577/v1/classify \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "state": "I was charged twice for my subscription this month.",
+    "questions": {
+      "team": {"type": "choice", "instructions": "Which team should handle this ticket?",
+               "criteria": {"billing": "payments, invoices", "technical": "bugs, errors"}},
+      "is_bug": {"type": "noul", "instructions": "Does this report a software bug?"}
+    }
+  }'
+# -> {"model": ..., "latency_ms": ..., "choices": {...}, "nouls": {...}}
+
+curl -s http://127.0.0.1:8577/health     # {"status": "ok", "model": ..., "ready": true}
+```
+
+It **binds to 127.0.0.1 by default** — local only, the same on-device promise as the library. Bind it
+elsewhere with `--host`, and set an API key so only authorised callers get through:
+
+```bash
+JUL_API_KEY=secret jul serve --host 0.0.0.0        # or: jul serve --api-key secret
+curl ... -H 'x-api-key: secret' http://<host>:8577/v1/classify
+```
+
+With a key set, every request (including `/health`) must carry a matching `x-api-key` header; without
+one, `jul serve` warns when bound beyond loopback. The request `state` is never logged —
+only the question count and latency — so private input stays private.
+
 ## How it answers
 
 For each formulation of the preset, the state and every option go through the same prompt; the answer
