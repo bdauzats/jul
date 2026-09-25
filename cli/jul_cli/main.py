@@ -349,7 +349,7 @@ def cmd_lab(a):
 
 
 def cmd_serve(a):
-    """Run a local HTTP server around the client, for non-Python callers on this machine."""
+    """Serve the client over the Jev (System One) HTTP protocol, for non-Python callers."""
     from jul_cli.serve import serve
     serve(model=a.model, backend=a.backend, host=a.host, port=a.port,
           warmup=not a.no_warmup, api_key=a.api_key)
@@ -453,13 +453,13 @@ def build_parser() -> argparse.ArgumentParser:
                         "0 disables the routing. Default: measured (or its decision.json, if it says)")
     s.set_defaults(fn=cmd_models)
 
-    s = sub.add_parser("serve", help="run a local HTTP classify server (for non-Python callers)")
+    s = sub.add_parser("serve", help="serve the Jev HTTP protocol (POST /v1/systemone) locally")
     s.add_argument("--model", **model_kw)
     s.add_argument("--backend", **backend_kw)
     s.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1, local only)")
     s.add_argument("--port", type=int, default=8577, help="port (default 8577)")
     s.add_argument("--api-key", default=None,
-                   help="require this key in the x-api-key header (else $JUL_API_KEY). "
+                   help="require this key, as Authorization: Bearer or x-api-key (else $JUL_API_KEY). "
                         "Recommended when binding beyond 127.0.0.1.")
     s.add_argument("--no-warmup", action="store_true", help="do not load the model before serving")
     s.set_defaults(fn=cmd_serve)
