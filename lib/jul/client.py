@@ -26,7 +26,7 @@ from .backbone import model_key, resolve_backend
 from .context import Context, question_digest, resolve_context
 from .engine import Engine, softmax
 from .decision import fallback_preset
-from .presets import Preset, one_word_preset, resolve
+from .presets import Preset, formulations_for, one_word_preset, resolve
 from .types import (Choice, ChoiceAnswer, Noul, NoulAnswer, Option, Question, Score, ScoreAnswer,
                     SystemOneResponse, Usage, options_of, serialize_state)
 
@@ -177,14 +177,19 @@ class TypeSafeClient:
             logits, tokens = engine.letter_logits(letters, text)
             return self._calibrated(ctx, kind, question, options, logits), tokens
 
-        compiled = engine.compile(kind, question.instructions, options, ctx)
+        compiled = engine.compile(kind, question.instructions, options, ctx, self._head_formulations(head))
         scores, features, tokens = engine.read(compiled, text, shared)
         if head is not None:
-            return tuning.apply(head, features), tokens
+            return tuning.apply(head, features, text), tokens
         return self._calibrated(ctx, kind, question, options, scores / self._preset.tau), tokens
 
     def _digest(self, kind: str, question: Question, options: list[Option]) -> str:
         return question_digest(model_key(self._preset.name, self.backend), kind, question.instructions, options)
+
+    def _head_formulations(self, head: dict | None):
+        """The formulations a head was trained on (None: the preset's)."""
+        names = (head or {}).get("meta", {}).get("formulations")
+        return formulations_for(self._preset, names) if names else None
 
     def _head(self, ctx: Context | None, kind, question, options) -> dict | None:
         return ctx.heads.get(self._digest(kind, question, options)) if ctx else None
@@ -200,12 +205,17 @@ class TypeSafeClient:
     # --- tuning -------------------------------------------------------------------------------
 
     def autotune(self, context: Context | str, questions: Mapping[str, Question], labeled: list,
-             model: str | None = None, save: bool = True) -> dict[str, tuning.TuningReport]:
+             model: str | None = None, save: bool = True, features: str = "vector",
+             formulations: Mapping[str, list[str]] | list[str] | None = None) -> dict[str, tuning.TuningReport]:
         """Fit a per-task head (and a calibration) from labeled examples, and store it in a context.
 
         `labeled` is a list of `(state, {question_name: answer})`. An answer is the option key for a
         Choice, True/False for a Noul, the level index for a Score. Returns one report per question;
         a head that does not beat the zero-shot method on held-out examples is not activated.
+        `features` is what the head reads: "vector" (the model's vectors), "lexical" (TF-IDF of the
+        text) or "hybrid" (both); see jul/tuning.py. `formulations` picks the prompts the head reads,
+        by name ("one_word", "question_options", "question"), for every question (a list) or per
+        question (a mapping); the head remembers them, so answering and compiling read the same way.
         """
         ctx = resolve_context(context, self._context_home)
         if ctx is None:
@@ -218,6 +228,7 @@ class TypeSafeClient:
                              "heads on vector features and does not apply to it yet")
         states = [serialize_state(s) for s, _ in labeled]
         reports: dict[str, tuning.TuningReport] = {}
+        features_mode = features
 
         for name, question in questions.items():
             kind = _kind_of(question)
@@ -228,14 +239,18 @@ class TypeSafeClient:
             if len(rows) < 2:
                 raise ValueError(f"question {name!r} has fewer than 2 labeled examples")
 
-            compiled = engine.compile(kind, question.instructions, options, ctx)
+            names = formulations.get(name) if isinstance(formulations, Mapping) else formulations
+            chosen = formulations_for(self._preset, names) if names else None
+            compiled = engine.compile(kind, question.instructions, options, ctx, chosen)
             scores, features = engine.read_many(compiled, [states[i] for i, _ in rows])
             y = np.array([label for _, label in rows])
 
             digest = self._digest(kind, question, options)
-            head, report = tuning.train(features, y, scores, keys, name, self._preset.name)
+            head, report = tuning.train(features, y, scores, keys, name, self._preset.name,
+                                        texts=[states[i] for i, _ in rows], mode=features_mode)
             ctx.calibration[digest] = fit_temperature_bias(scores / self._preset.tau, y)
             if head is not None:
+                head["meta"]["formulations"] = [f.name for f in chosen] if chosen else None
                 ctx.heads[digest] = head
             else:
                 ctx.heads.pop(digest, None)

@@ -187,10 +187,26 @@ def cmd_autotune(a):
         ctx = Context(name=a.context)
     client = TypeSafeClient(model=a.model, backend=a.backend, context=ctx)
     print(f"tuning on {len(labeled)} labeled examples with {a.model or DEFAULT_MODEL} ...", file=sys.stderr)
-    reports = client.autotune(ctx, questions, labeled)
+    reports = client.autotune(ctx, questions, labeled, features=a.features)
     for report in reports.values():
         print(report)
         print()
+    client.close()
+
+
+def cmd_compile(a):
+    from jul.compiled import compile_questions
+    questions = load_questions(a.questions)
+    ctx = Context.load(a.context) if a.context else None
+    client = TypeSafeClient(model=a.model, backend=a.backend, context=ctx)
+    path = compile_questions(client, questions, a.out, context=ctx)
+    manifest = json.loads((path / "compiled.json").read_text())
+    print(f"compiled {len(questions)} question(s) on {manifest['preset']['name']} ({manifest['backend']}) "
+          f"into {path}: {len(manifest['prompts'])} prompt(s) per state")
+    for q in manifest["questions"]:
+        how = (f"{q['head'].get('features', 'vector')} head" if q["head"] else
+               "calibrated zero-shot" if q["calibration"] else "zero-shot")
+        print(f"  {q['name']}: {q['kind']}, {len(q['options'])} options, {how}")
     client.close()
 
 
@@ -240,7 +256,7 @@ def cmd_models(a):
                   + f", tau={p.tau}, center={p.center}")
         if p.notes:
             print(f"  note: {p.notes}")
-    print("\nAdd a model: jul models add <name> --repo <hf repo> [--backend mlx|torch]")
+    print("\nAdd a model: jul models add <name> --repo <hf repo> [--backend mlx|torch|onnx]")
 
 
 def cmd_models_add(a):
@@ -388,9 +404,19 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("context", help="name of the context the head is stored in")
     s.add_argument("--questions", required=True)
     s.add_argument("--labeled", required=True, help="JSONL: {state, answers: {question: answer}}")
+    s.add_argument("--features", choices=["vector", "lexical", "hybrid"], default="vector",
+                   help="what the head reads: the model's vectors (default), TF-IDF of the text, or both")
     s.add_argument("--model", **model_kw)
     s.add_argument("--backend", **backend_kw)
     s.set_defaults(fn=cmd_autotune)
+
+    s = sub.add_parser("compile", help="freeze questions (and a context's heads) into a bundle to deploy")
+    s.add_argument("out", help="directory to write")
+    s.add_argument("--questions", required=True)
+    s.add_argument("--context", help="context whose heads and calibration the bundle carries")
+    s.add_argument("--model", **model_kw)
+    s.add_argument("--backend", **backend_kw)
+    s.set_defaults(fn=cmd_compile)
 
     s = sub.add_parser("synth", help="write a synthetic labeled dataset (for a later autotune)")
     s.add_argument("questions")
@@ -431,7 +457,7 @@ def main(argv=None) -> None:
     a = build_parser().parse_args(argv)
     if a.command == "context" and a.action != "list" and not a.name:
         raise SystemExit(f"context {a.action} needs a name")
-    if a.command in {"ask", "run", "autotune"} or (
+    if a.command in {"ask", "run", "autotune", "compile"} or (
             a.command == "context" and a.action == "create" and a.examples and not a.lazy):
         from jul_cli.setup import require_setup
         require_setup(a.model, a.backend)

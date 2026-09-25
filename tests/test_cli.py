@@ -125,7 +125,7 @@ def test_ask_says_to_run_setup_when_the_weights_are_not_downloaded(monkeypatch):
     from jul_cli import setup
     from jul_cli.main import main
     monkeypatch.setattr(setup, "missing_modules", lambda _: [])
-    monkeypatch.setattr(setup, "weights_cached", lambda _: False)
+    monkeypatch.setattr(setup, "weights_cached", lambda *_: False)
     with pytest.raises(SystemExit, match=r"not downloaded for torch.*Run: jul setup --backend torch"):
         main(["ask", "choice", "q", "-o", "a", "-o", "b", "--state", "s", "--backend", "torch"])
 

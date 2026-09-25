@@ -150,15 +150,18 @@ class Engine:
             return np.zeros(options_matrix.shape[-1], dtype=options_matrix.dtype)
         return options_matrix.mean(0)
 
-    def compile(self, kind: str, instructions: str, options: list[Option], context=None) -> CompiledQuestion:
-        key = (kind, instructions, tuple((o.key, o.description) for o in options),
+    def compile(self, kind: str, instructions: str, options: list[Option], context=None,
+                formulations: tuple[Formulation, ...] | None = None) -> CompiledQuestion:
+        """`formulations` replaces the preset's for this question (see presets.formulations_for)."""
+        formulations = tuple(formulations or self.preset.formulations)
+        key = (kind, instructions, tuple((o.key, o.description) for o in options), formulations,
                getattr(context, "cache_key", lambda: None)() if context is not None else None)
         if key in self._questions:
             self._questions.move_to_end(key)
             return self._questions[key]
 
         passes = []
-        for f in self.preset.formulations:
+        for f in formulations:
             shared = "{instructions}" not in f.template
             template = (self._one_word_template(f, _description(context)) if shared
                         else self._template(self._render(f, instructions, options), _description(context)))
@@ -168,7 +171,7 @@ class Engine:
 
         compiled = CompiledQuestion(options=options, passes=passes,
                                     shared_one_word=any("{instructions}" not in f.template
-                                                        for f in self.preset.formulations))
+                                                        for f in formulations))
         self._questions[key] = compiled
         if len(self._questions) > self._max_cached:
             self._questions.popitem(last=False)
