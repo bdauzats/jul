@@ -49,16 +49,9 @@ the network.
 
 ## The baseline worth remembering
 
-Before any of this earns its cost, here is what a bag of words does on the same 300 rows, trained on
-the same 1000 labeled examples, with no LLM at all (`scripts/bench_tfidf.py`):
-
-| No LLM | AG News | Banking77 | Emotion | Mean | p50 | Training |
-|---|---:|---:|---:|---:|---:|---:|
-| TF-IDF + linear SVM | 0.88 | 0.76 | 0.43 | **0.690** | **0.17 ms** | 0.1 s on CPU |
-
-It is 6.3 points behind Jev at roughly **1400× lower latency**. It loses clearly on Emotion only,
-where recognising a feeling needs meaning rather than vocabulary. If you have labels and your task
-looks like topic or intent sorting, try it first: it takes a minute.
+A TF-IDF + linear SVM, no LLM, scores 0.690 at 0.17 ms per prediction: see
+[the baseline worth remembering](../README.md#the-baseline-worth-remembering) in the README, whose
+accuracies CI re-measures on every PR.
 
 ## The decision model, on the development sets
 
@@ -199,7 +192,9 @@ embedding models — only `Choice` is so far.
 
 ## Reproducing the measurements
 
-Every number in these docs comes from a script in `scripts/`. None of the data is committed; these
+The benchmark rows, the baseline and the dev-set experiments come from `scripts/`. The decision-model
+figures (`dev_decision_jul.py`, `bench_jul_decision.py`) come from the research repo and the AWS Lambda
+figures from jul-lambda; neither is published here. None of the data is committed; these
 steps fetch it. Durations are given per command where measured.
 
 ```bash

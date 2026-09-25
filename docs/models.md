@@ -25,11 +25,11 @@ one command away,
 | `ternary-bonsai-1.7b` | [`prism-ml/Ternary-Bonsai-1.7B-mlx-2bit`](https://huggingface.co/prism-ml/Ternary-Bonsai-1.7B-mlx-2bit) | 0.46 GB | 0.640 | 0.760 |
 | `ternary-bonsai-8b` | [`prism-ml/Ternary-Bonsai-8B-mlx-2bit`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-mlx-2bit) | 1.75 GB | 0.563 | 0.753 |
 | `bitnet-2b` | [`mlx-community/bitnet-b1.58-2B-4T`](https://huggingface.co/mlx-community/bitnet-b1.58-2B-4T) | 1.1 GB | 0.617 | 0.723 |
-| `e5-small` | [`intfloat/multilingual-e5-small`](https://huggingface.co/intfloat/multilingual-e5-small), onnx 8-bit | **0.09 GB** | 0.587 | 0.670 (**0.770** hybrid) |
+| `e5-small` | [`intfloat/multilingual-e5-small`](https://huggingface.co/intfloat/multilingual-e5-small), onnx 8-bit | **0.09 GB** | 0.543 | 0.713 (**0.790** hybrid) |
 
 `+ autotune` is a head on the vectors (`features="vector"`). With a hybrid head (vectors + TF-IDF, see
 [`features=`](tuning.md#what-the-head-reads-features)), `e5-small` — an encoder, see [Micro models](#micro-models-encoders) —
-reaches **0.770**, above Jev's 0.753 (AG News 0.92, Banking77 0.84, Emotion 0.55), at 21 ms per text on
+reaches **0.790**, above Jev's 0.753 (AG News 0.95, Banking77 0.88, Emotion 0.54), at 6 ms per text on
 an M4 Pro. The other models were not measured with a hybrid head.
 
 ## Adding a model

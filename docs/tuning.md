@@ -104,8 +104,8 @@ client.autotune("tickets", questions, labeled, features="hybrid")   # "vector" (
   What the vectors miss, the words often carry: on dair-ai/emotion, Harrier 0.6B vectors alone gave
   0.734, TF-IDF alone 0.751, the hybrid head 0.797.
 
-`vector` is the default. `hybrid` usually does better: on the Jev bench, `e5-small` goes from 0.670
-with a vector head to 0.770 with a hybrid one.
+`vector` is the default. `hybrid` usually does better: on the Jev bench, `e5-small` goes from 0.713
+with a vector head to 0.790 with a hybrid one.
 
 Lexical and hybrid heads train with scikit-learn (`pip install "jul[tune]"`) and run with numpy alone:
 the vocabulary and idf are saved with the head. The same safety net applies: a head that does not beat

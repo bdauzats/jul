@@ -152,7 +152,8 @@ the same 1000 labeled examples, with no LLM at all (`scripts/bench_tfidf.py`):
 It is 6.3 points behind Jev at roughly **1400× lower latency**. It loses clearly on Emotion only,
 where recognising a feeling needs meaning rather than vocabulary. If you have labels and your task
 looks like topic or intent sorting, try it first: it takes a minute. CI re-measures these accuracies
-on every PR ([numbers.yml](https://github.com/usejul/jul/blob/main/.github/workflows/numbers.yml)).
+on every PR ([numbers.yml](https://github.com/usejul/jul/blob/main/.github/workflows/numbers.yml));
+change `CLAIMED` there if you change them here.
 
 ## Models
 
@@ -161,7 +162,7 @@ on every PR ([numbers.yml](https://github.com/usejul/jul/blob/main/.github/workf
 | `wemm-4b-4bit` (default, alias `accurate`) | 2.6 GB | 0.857 | 0.897 | built in |
 | `minicpm5-2b` (alias `fast`) | 2.7 GB | 0.617 | 0.757 | built in, 62 ms on an M4 Pro |
 | `minicpm5-2b-decision` | 1.3 GB | 0.796 | — | trained decision model, `jul models add` |
-| `e5-small` (ONNX, 8-bit) | 0.09 GB | 0.587 | 0.670 (0.770 hybrid head) | encoder, 21 ms per text on an M4 Pro |
+| `e5-small` (ONNX, 8-bit) | 0.09 GB | 0.543 | 0.713 (0.790 hybrid head) | encoder, 6 ms per text on an M4 Pro |
 
 Any other model is one command away — `jul models add <name> --repo <hf-repo>` fits its layers,
 center and temperature on the dev sets. All 17 measured models, encoders, decision models and every
@@ -179,6 +180,22 @@ setting: [docs/models.md](https://github.com/usejul/jul/blob/main/docs/models.md
 | [Benchmarks](https://github.com/usejul/jul/blob/main/docs/benchmarks.md) | full results, what is and isn't measured, reproducing every number |
 | [Development](https://github.com/usejul/jul/blob/main/docs/development.md) | repository layout, test suites |
 | [Publishing](https://github.com/usejul/jul/blob/main/docs/publishing.md) | versioning and the release pipeline |
+
+<details>
+<summary>Looking for a section of the old README? It moved to <code>docs/</code>.</summary>
+
+- Install, backends, `jul setup` → [installation](https://github.com/usejul/jul/blob/main/docs/installation.md)
+- The models, every model measured, adding a model, micro models, decision models, how it answers,
+  every reading and setting, the two presets → [models](https://github.com/usejul/jul/blob/main/docs/models.md)
+- Use it as a drop-in for Jev → [Quickstart](#quickstart)
+- Context, `autotune(...)`, `features=`, `formulations=`, `jul synth` → [tuning](https://github.com/usejul/jul/blob/main/docs/tuning.md)
+- `jul pack` and the onnx backend → [deployment](https://github.com/usejul/jul/blob/main/docs/deployment.md)
+- Command line, file formats → [cli](https://github.com/usejul/jul/blob/main/docs/cli.md)
+- Results, the decision model, embedding models, what is measured, next steps, reproducing the
+  measurements → [benchmarks](https://github.com/usejul/jul/blob/main/docs/benchmarks.md)
+- Layout, tests → [development](https://github.com/usejul/jul/blob/main/docs/development.md)
+
+</details>
 
 ## Showcases
 

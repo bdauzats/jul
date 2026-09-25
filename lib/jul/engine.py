@@ -11,7 +11,7 @@ per state and shared by every question of the call.
 
 `letters` is the older reading, kept for `method="letters"` and the lab's baselines: the options are
 listed in the prompt and the answer is read from the logits of the answer tokens. Vectors are the
-default for every type, `Noul` and `Score` included, since they beat letters there too (README).
+default for every type, `Noul` and `Score` included, since they beat letters there too (docs/benchmarks.md).
 """
 
 from __future__ import annotations
