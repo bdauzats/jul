@@ -2,7 +2,7 @@
 
 # JuL — Juste un LLM
 
-**Typed decisions from a local LLM. Same interface as Jev's SDK, any model, zero tokens generated.**
+**Typed decisions on your machine, with the model of your choice.<br>No training, no API, no task learned by heart.**
 
 [![PyPI](https://img.shields.io/pypi/v/jul?color=blue&label=PyPI)](https://pypi.org/project/jul/)
 [![Python](https://img.shields.io/badge/python-%E2%89%A53.10-3776AB?logo=python&logoColor=white)](https://pypi.org/project/jul/)
@@ -19,31 +19,33 @@
 
 ---
 
-JuL is a headless decision runtime. It answers **typed questions** — a choice among options, a yes/no,
-a score on a scale — about a piece of text, with calibrated probabilities, on your machine.
+JuL answers **typed questions** about a piece of text — a choice among options, a yes/no, a score on
+a scale — with calibrated probabilities, on your machine.
 
-It is a drop-in for the [TypeSafe (Jev)](https://jevable.com/) Python SDK: same imports, same calls,
-same response shapes. But there is no hosted API and no fixed backbone: point it at any local LLM
-(MLX, PyTorch or ONNX) and it becomes a decision head for that model.
+It learns no task. It reads the hidden-state vector of a general-purpose model and compares it with
+the *descriptions* of your options. Nothing about your task is frozen into weights: change the
+options, and the next call answers the new question. Change the model, and your code stays the same.
 
 JuL is stopped one step before its first syllable and the answer is read straight out of its hidden
 states: no monologue, no reasoning trace, no opinion on the matter — nobody asked for one. It has
-nothing to say, and it says it in 64 milliseconds.
+nothing to say, and it says it in 55 milliseconds.
 
 ## Why JuL
 
-- **Competitive with Jev, locally.** On Jev's own benchmark, `wemm-4b` scores 0.877 against 0.753
-  zero-shot. Two of its three sets are in MTEB, which embedding models train on; on the clean one,
-  AG News, it is 0.95 against 0.91. [Results](#results)
-- **Drop-in.** Change one import; your `system_one(...)` calls keep working.
-- **Any backbone.** 17 models measured, from 90 MB encoders to 9B embedding models. Add yours with
-  `jul models add`.
-- **Tunable in seconds.** `autotune(...)` fits a small head on your labels, keeps it only if it beats
-  zero-shot in cross-validation, and never touches the LLM.
-- **Deployable anywhere.** `jul pack` + the ONNX backend: 17 ms per message and $0.59 per million
-  calls on AWS Lambda, no torch.
-- **Honest numbers.** The benchmark figures come from scripts in `scripts/`, the rest is labelled
-  where it was measured, and the no-LLM baseline is re-measured by CI on every PR.
+- **Zero-shot, no task training.** 0.857 on Jev's public benchmark (300 examples) with the default
+  model, and JuL is given no example of the tasks. Two of the three sets are in MTEB, which embedding
+  models train on; the clean one, AG News, gives 0.95 with `wemm-4b`. [Results](#results)
+- **Many options, no collapse.** On Banking77, 72 fine-grained intents, the default model scores
+  0.87 zero-shot (MTEB caveat above). Options are encoded once, so their number costs almost nothing
+  at call time.
+- **Probabilities you can put a threshold on.** ECE 0.084 on the same benchmark: a confidence is close
+  to how often it turns out right, so you can automate above a threshold and escalate below it.
+- **Local and open.** Apache 2.0, 2.6 GB, 55 ms per decision on a Mac; `f2llm-1.7b` fits in 1 GB at
+  24 ms. Nothing to pay per call, and the text never leaves the machine.
+- **The model is a part, not the product.** 17 backbones measured, from 90 MB encoders to 9B
+  embedding models. When a better embedding model comes out, `jul models add` plugs it in the same
+  day; your application code does not change.
+- **Drop-in for the Jev SDK.** Same imports, same calls, same response shapes: change one import.
 
 ## Install
 
@@ -115,30 +117,28 @@ described in [docs/models.md](https://github.com/usejul/jul/blob/main/docs/model
 
 ## Results
 
-Jev's published benchmark, 300 examples, every row read through the public API
-(`scripts/bench_jul.py`). Zero-shot only — the only setting comparable to Jev.
+Jev's published benchmark: 300 examples over three tasks, every row read through the public API
+(`scripts/bench_jul.py`), zero-shot — no example of these tasks was used.
 
-| Model | AG News | Banking77 | Emotion | Mean | ECE ↓ | p50 | Memory |
+| Model | AG News | Banking77 (72 options) | Emotion | Mean | ECE ↓ | p50 | Memory |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| JuL `wemm-4b` | 0.95 | **0.88** | 0.80 | **0.877** | 0.112 | 78 ms | 4.5 GB |
-| JuL `wemm-9b` | **0.97** | 0.84 | 0.78 | 0.863 | 0.114 | 138 ms | 9.0 GB |
-| JuL `wemm-4b-4bit` (default) | 0.90 | 0.87 | 0.80 | 0.857 | 0.084 | 55 ms | 2.6 GB |
-| JuL `f2llm-4b` | 0.89 | 0.82 | 0.81 | 0.840 | 0.090 | 46 ms | 3.0 GB |
-| JuL `f2llm-1.7b` | 0.91 | 0.67 | **0.87** | 0.817 | **0.082** | **24 ms** | 1.0 GB |
-| JuL `minicpm5-2b-decision` ¹ | 0.91 | 0.79 | 0.69 | 0.796 | 0.133 | 217 ms ² | |
-| **Jev (published)** | 0.91 | 0.87 | 0.48 | 0.753 | 0.156 | 246 ms ³ | hosted |
-| JuL `minicpm5-2b` (`fast`) | 0.80 | 0.59 | 0.46 | 0.617 | 0.113 | 64 ms ² | 2.7 GB |
-| GLiNER2.5 (published) | 0.70 | 0.61 | 0.44 | 0.583 | 0.101 | 128 ms | |
+| `wemm-4b` | 0.95 | **0.88** | 0.80 | **0.877** | 0.112 | 78 ms | 4.5 GB |
+| `wemm-9b` | **0.97** | 0.84 | 0.78 | 0.863 | 0.114 | 138 ms | 9.0 GB |
+| `wemm-4b-4bit` (default) | 0.90 | 0.87 | 0.80 | 0.857 | 0.084 | 55 ms | 2.6 GB |
+| `f2llm-4b` | 0.89 | 0.82 | 0.81 | 0.840 | 0.090 | 46 ms | 3.0 GB |
+| `f2llm-1.7b` | 0.91 | 0.67 | **0.87** | 0.817 | **0.082** | **24 ms** | 1.0 GB |
+| `minicpm5-2b` (`fast`) | 0.80 | 0.59 | 0.46 | 0.617 | 0.113 | 64 ms ¹ | 2.7 GB |
+| *Jev, published, for reference* | *0.91* | *0.87* | *0.48* | *0.753* | *0.156* | *246 ms* ² | *hosted* |
 
-Latencies are p50 on an M5 Max, except ² on an M4 Pro (where `wemm-4b-4bit` takes 146 ms); ³ includes
-the network. ¹ Trained on these three tasks' training splits (the rows come from the test splits); on
-six sources neither ever trained on, Jev leads, 0.857 against 0.721.
+**How to read it.** 100 rows per task: ±5 points per cell, ±3 on the mean. Banking77 and Emotion are
+in MTEB, which embedding models (`wemm-*`, `f2llm-*`) train on, so they have probably seen these
+texts; **AG News is the clean comparison** (0.95 for `wemm-4b`, 0.91 for Jev). p50 on an M5 Max,
+¹ on an M4 Pro; ² includes the network. Seventeen models were read on these rows; the full table,
+the tuned rows, the decision model and how to reproduce every number are in
+[docs/benchmarks.md](https://github.com/usejul/jul/blob/main/docs/benchmarks.md).
 
-100 rows per dataset: ±5 points per cell, ±3 on the mean. Seventeen models were read on these rows;
-this table keeps the leaders and the presets. Banking77 and Emotion are in MTEB, which embedding models
-train on; **AG News is the clean comparison**. With 1000 labels (not comparable to Jev), `autotune` takes
-`wemm-4b-4bit` to 0.897. Full tables, the decision model, calibration, latencies and how to reproduce
-everything: [docs/benchmarks.md](https://github.com/usejul/jul/blob/main/docs/benchmarks.md).
+**Not measured yet.** Domains far from this benchmark's text (sensor logs, chemistry…) have not been
+tested. Every layer, temperature and center was fitted on English.
 
 ### The baseline worth remembering
 
@@ -161,7 +161,7 @@ change `CLAIMED` there if you change them here.
 | --- | ---: | ---: | ---: | --- |
 | `wemm-4b-4bit` (default, alias `accurate`) | 2.6 GB | 0.857 | 0.897 | built in |
 | `minicpm5-2b` (alias `fast`) | 2.7 GB | 0.617 | 0.757 | built in, 62 ms on an M4 Pro |
-| `minicpm5-2b-decision` | 1.3 GB | 0.796 | — | trained decision model, `jul models add` |
+| `minicpm5-2b-decision` | 1.3 GB | see [benchmarks](https://github.com/usejul/jul/blob/main/docs/benchmarks.md) | — | trained decision model, `jul models add` |
 | `e5-small` (ONNX, 8-bit) | 0.09 GB | 0.543 | 0.713 (0.790 hybrid head) | encoder, 6 ms per text on an M4 Pro |
 
 Any other model is one command away — `jul models add <name> --repo <hf-repo>` fits its layers,
