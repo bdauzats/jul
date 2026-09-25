@@ -1,4 +1,4 @@
-# Publishing jul
+# Publishing JuL
 
 `.github/workflows/release.yml` builds the package on every push to `main` and on every `v*` tag. The
 version comes from git ([setuptools-scm](https://setuptools-scm.readthedocs.io/)), never from a file
@@ -33,7 +33,7 @@ To install the unstable channel:
 pip install --pre -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple jul
 ```
 
-(`--extra-index-url`: jul's dependencies are not all on TestPyPI.) TestPyPI is not a production
+(`--extra-index-url`: JuL's dependencies are not all on TestPyPI.) TestPyPI is not a production
 index and may be wiped: it is for trying things, never for depending on.
 
 ## One-time setup, on the index side

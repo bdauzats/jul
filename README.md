@@ -28,7 +28,7 @@ pip install "jul[onnx]"       # CPU only, no torch: to deploy an exported model 
 # [onnx-export] to export a model for the onnx backend
 ```
 
-From a checkout, to work on jul itself: `pip install -e ".[dev]"`.
+From a checkout, to work on JuL itself: `pip install -e ".[dev]"`.
 
 Or let `jul setup` do the rest: it picks the backend (MLX on Apple Silicon, else PyTorch), installs
 it if missing, downloads WeMM-Embedding-4B (2.6 GB, 4-bit) once, and checks one real decision. Running it again redoes only
@@ -79,8 +79,8 @@ when it exists. Centers, heads and calibrations saved in a context are keyed per
 trained on MLX is never applied to PyTorch vectors.
 
 A third backend, **onnx** (ONNX Runtime on CPU), is never picked by default: it reads a model
-exported for it, and exists to deploy jul where torch does not fit (see [Deploying a fixed
-need](#deploying-a-fixed-need-jul-compile-and-the-onnx-backend)). `JUL_HOME` moves everything jul
+exported for it, and exists to deploy JuL where torch does not fit (see [Deploying a fixed
+need](#deploying-a-fixed-need-jul-compile-and-the-onnx-backend)). `JUL_HOME` moves everything JuL
 writes (presets, contexts, calibration data) from `~/.jul` elsewhere, e.g. a read-only Lambda package.
 
 ### The models
@@ -166,7 +166,7 @@ on the Jev bench separately, once.
 ### Micro models: encoders
 
 An encoder (BERT, XLM-R, multilingual-e5…) is a backbone like any other: `jul models add`,
-`autotune` and `jul compile` run on it unchanged, on the torch and onnx backends. jul recognizes one by
+`autotune` and `jul compile` run on it unchanged, on the torch and onnx backends. JuL recognizes one by
 its `model_type` and reads it as it was trained, not as a decoder (`lib/jul/encoder.py`):
 
 - the vector is the mean of the layer over the whole sequence (the sentence embedding e5 was trained to
@@ -358,14 +358,14 @@ data at call time, and Jev receives none.
 
 | Zero-shot                      |  AG News | Banking77 |  Emotion |      Mean |     ECE ↓ |       p50 |  Memory |
 | ------------------------------ | -------: | --------: | -------: | --------: | --------: | --------: | ------: |
-| jul `wemm-4b`                  |     0.95 |  **0.88** |     0.80 | **0.877** |     0.112 |     78 ms |  4.5 GB |
-| jul `wemm-9b`                  | **0.97** |      0.84 |     0.78 |     0.863 |     0.114 |    138 ms |  9.0 GB |
-| jul `wemm-4b-4bit`             |     0.90 |      0.87 |     0.80 |     0.857 |     0.084 |     55 ms |  2.6 GB |
-| jul `f2llm-4b`                 |     0.89 |      0.82 |     0.81 |     0.840 |     0.090 |     46 ms |  3.0 GB |
-| jul `f2llm-1.7b`               |     0.91 |      0.67 | **0.87** |     0.817 | **0.082** | **24 ms** |  1.0 GB |
-| jul `minicpm5-2b-decision` ¹   |     0.91 |      0.79 |     0.69 |     0.796 |     0.133 |    217 ms |         |
+| JuL `wemm-4b`                  |     0.95 |  **0.88** |     0.80 | **0.877** |     0.112 |     78 ms |  4.5 GB |
+| JuL `wemm-9b`                  | **0.97** |      0.84 |     0.78 |     0.863 |     0.114 |    138 ms |  9.0 GB |
+| JuL `wemm-4b-4bit`             |     0.90 |      0.87 |     0.80 |     0.857 |     0.084 |     55 ms |  2.6 GB |
+| JuL `f2llm-4b`                 |     0.89 |      0.82 |     0.81 |     0.840 |     0.090 |     46 ms |  3.0 GB |
+| JuL `f2llm-1.7b`               |     0.91 |      0.67 | **0.87** |     0.817 | **0.082** | **24 ms** |  1.0 GB |
+| JuL `minicpm5-2b-decision` ¹   |     0.91 |      0.79 |     0.69 |     0.796 |     0.133 |    217 ms |         |
 | **Jev (published)**            |     0.91 |      0.87 |     0.48 |     0.753 |     0.156 |    246 ms |  hosted |
-| jul `minicpm5-2b`              |     0.80 |      0.59 |     0.46 |     0.617 |     0.113 |     64 ms |  2.7 GB |
+| JuL `minicpm5-2b`              |     0.80 |      0.59 |     0.46 |     0.617 |     0.113 |     64 ms |  2.7 GB |
 | GLiNER2.5 (published)          |     0.70 |      0.61 |     0.44 |     0.583 |     0.101 |    128 ms |         |
 
 - **Nine `jul` models beat Jev zero-shot, the best by 12.4 points** (`wemm-4b`, 0.877 against
@@ -672,7 +672,7 @@ backend — a bundle names the backend its vectors came from, and the code is th
 (tested on torch and onnx) — but the vectors are: compile on the backend you deploy on (loading on
 another one warns).
 
-**The onnx backend** runs a model exported by jul on ONNX Runtime, without torch or transformers (the
+**The onnx backend** runs a model exported by JuL on ONNX Runtime, without torch or transformers (the
 tokenizer is read with `tokenizers` alone). With e5-small in 8 bits, the whole Lambda package, model
 included, is 225 MB.
 
@@ -876,7 +876,7 @@ JUL_SLOW=1 pytest tests -m torch   # MLX against PyTorch on the same weights
 ```
 
 The onnx, encoder and compile tests build tiny random models on the fly (a 4-layer Qwen3 and a
-4-layer XLM-R), export them with jul and compare onnx with torch on the same weights; only the
+4-layer XLM-R), export them with JuL and compare onnx with torch on the same weights; only the
 tokenizers are downloaded (`JUL_TEST_TOKENIZER`, `JUL_TEST_ENCODER_TOKENIZER`). They need
 `jul[onnx-export]` and are skipped without it.
 
