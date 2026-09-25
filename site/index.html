@@ -315,6 +315,7 @@ ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shad
         <button type="button" data-vs-model="wemm-4b-4bit" aria-pressed="true">[ WEMM-4B-4BIT ]</button>
         <button type="button" data-vs-model="f2llm-1.7b" aria-pressed="false">[ F2LLM-1.7B ]</button>
         <button type="button" data-vs-model="harrier-0.6b" aria-pressed="false">[ HARRIER-0.6B ]</button>
+        <button type="button" data-vs-model="e5-small" aria-pressed="false">[ E5-SMALL ]</button>
         <button type="button" data-vs-model="minicpm5-2b" aria-pressed="false">[ MINICPM5-2B ]</button>
       </div>
       <div class="chart-bar" role="group" aria-label="Setting">
@@ -336,7 +337,7 @@ ul.dos b { font-weight: 400; background: var(--ph); color: var(--ink); text-shad
         <pre class="minibars" id="kpi-ms-b"></pre>
       </div>
       <div class="kpi">
-        <p class="eyebrow">MEMORY · 4-BIT</p>
+        <p class="eyebrow" id="kpi-gb-t">MEMORY · 4-BIT</p>
         <p class="big"><span id="kpi-gb">2.6</span><small>GB</small></p>
         <p class="delta" id="kpi-gb-d"></p>
         <pre class="minibars" id="kpi-gb-b"></pre>
@@ -460,6 +461,7 @@ r.choices["team"].probabilities  <span class="dim"># {"billing": 0.88, ...}</spa
         <tr><th scope="row">jul minicpm5-2b-decision ¹</th><td data-v="0.91">0.91</td><td data-v="0.79">0.79</td><td data-v="0.69">0.69</td><td data-v="0.796">0.796</td><td data-v="0.133">0.133</td><td data-v="217">217 ms</td><td data-v="1.3">1.3 GB</td></tr>
         <tr class="jev"><th scope="row">Jev (published)</th><td data-v="0.91">0.91</td><td data-v="0.87">0.87</td><td data-v="0.48">0.48</td><td data-v="0.753">0.753</td><td data-v="0.156">0.156</td><td data-v="246">246 ms</td><td data-v="">hosted</td></tr>
         <tr><th scope="row">jul harrier-0.6b ²</th><td data-v="0.72">0.72</td><td data-v="0.52">0.52</td><td data-v="0.76">0.76</td><td data-v="0.667">0.667</td><td data-v="0.144">0.144</td><td data-v="13">13 ms</td><td data-v="0.31">0.31 GB</td></tr>
+        <tr><th scope="row">jul e5-small ³</th><td data-v="0.73">0.73</td><td data-v="0.6">0.60</td><td data-v="0.43">0.43</td><td data-v="0.587">0.587</td><td data-v="0.112">0.112</td><td data-v="22">22 ms</td><td data-v="0.09">0.09 GB</td></tr>
         <tr><th scope="row">jul minicpm5-2b</th><td data-v="0.8">0.80</td><td data-v="0.59">0.59</td><td data-v="0.46">0.46</td><td data-v="0.617">0.617</td><td data-v="0.113">0.113</td><td data-v="64">64 ms</td><td data-v="2.7">2.7 GB</td></tr>
         <tr><th scope="row">GLiNER2.5 (published)</th><td data-v="0.7">0.70</td><td data-v="0.61">0.61</td><td data-v="0.44">0.44</td><td data-v="0.583">0.583</td><td data-v="0.101">0.101</td><td data-v="128">128 ms</td><td data-v="">—</td></tr>
       </tbody>
@@ -474,6 +476,7 @@ r.choices["team"].probabilities  <span class="dim"># {"billing": 0.88, ...}</spa
       </ul>
       <ul class="dos">
         <li><span>With 1,000 labeled examples, <b>wemm-4b-4bit reaches 0.897</b> and 0.94 on Banking77. Harrier-0.6B passes Jev in 0.31 GB at 13 ms.</span></li>
+        <li><span>³ multilingual-e5-small, a 118M-parameter encoder (ONNX, 8-bit, M4 Pro). Alone it is at GLiNER's level; <b>with a hybrid head (vectors + TF-IDF) it reaches 0.770</b>, above Jev, at 21 ms and 17 ms on AWS Lambda.</span></li>
         <li><span>100 rows per dataset: ±5 points per cell, ±3 on the mean. If a bag of words solves your task, use it: <a href="https://github.com/usejul/jul#the-baseline-worth-remembering">we measured that too</a>.</span></li>
       </ul>
     </div>
@@ -823,6 +826,8 @@ latency per decision, and the answer to the ticket.</pre>
     "wemm-4b-4bit": { zs: [.857, 55, 2.6, "M5 Max"], tuned: [.897, 59, 2.6, "M5 Max"], label: "WeMM-Embedding-4B" },
     "f2llm-1.7b":   { zs: [.817, 24, 1.0, "M5 Max"], tuned: [.833, 24, 1.0, "M5 Max"], label: "F2LLM-v2-1.7B" },
     "harrier-0.6b": { zs: [.667, 13, .31, "M5 Max"], tuned: [.814, 13, .31, "M5 Max"], label: "Harrier-OSS-0.6B" },
+    "e5-small":     { zs: [.587, 22, .09, "M4 Pro"], tuned: [.670, 20, .09, "M4 Pro"], label: "multilingual-e5-small", bits: 8,
+                      extra: " With a hybrid head (vectors + TF-IDF): 0.770, above Jev." },
     "minicpm5-2b":  { zs: [.617, 64, 2.7, "M4 Pro"], tuned: [.757, 38, 2.7, "M5 Max"], label: "MiniCPM5-2B" },
   };
   const vs = { model: "wemm-4b-4bit", mode: "zs" };
@@ -861,10 +866,12 @@ latency per decision, and the answer to the ticket.</pre>
     setDelta("kpi-ms-d", "▲ " + x.toFixed(1) + "× faster than Jev", "win");
     setBars("kpi-ms-b", kbar(ms, 280) + " " + ms + " ms", kbar(VS_JEV.ms, 280) + " " + VS_JEV.ms + " ms");
     setDelta("kpi-gb-d", "on your machine", "even");
+    document.getElementById("kpi-gb-t").textContent = `MEMORY · ${m.bits || 4}-BIT`;
     setBars("kpi-gb-b", kbar(gb, 10) + " " + (gb < 1 ? gb.toFixed(2) : gb.toFixed(1)) + " GB", "·".repeat(KB) + " hosted");
     document.getElementById("kpi-note").textContent =
       `${m.label}${vs.mode === "tuned" ? " + autotune (1,000 labeled examples per task; Jev gets none)" : ", zero-shot"}. ` +
       `Latency on an ${hw}` + (vs.model === "wemm-4b-4bit" ? "; about 145 ms on an M4 Pro." : ".") +
+      (vs.mode === "tuned" && m.extra ? m.extra : "") +
       " Jev's latency includes the network; its memory is not published.";
     document.querySelectorAll("[data-vs-model]").forEach(b => b.setAttribute("aria-pressed", b.dataset.vsModel === vs.model));
     document.querySelectorAll("[data-vs-mode]").forEach(b => b.setAttribute("aria-pressed", b.dataset.vsMode === vs.mode));
@@ -915,6 +922,7 @@ latency per decision, and the answer to the ticket.</pre>
     ["f2llm-1.7b",   .91, .67, .87, .817, .082,  24, 1.0,  [.89, .72, .89, .833, null,  24]],
     ["2b-decision",  .91, .79, .69, .796, .133, 217, 1.3,  null],
     ["harrier-0.6b", .72, .52, .76, .667, .144,  13, 0.31, [.91, .71, .83, .814, null,  13]],
+    ["e5-small",     .73, .60, .43, .587, .112,  22, 0.09, [.84, .78, .39, .670, .099,  20]],
     [JEV,            .91, .87, .48, .753, .156, 246, null, "same"],
     ["minicpm5-2b",  .80, .59, .46, .617, .113,  64, 2.7,  [.92, .76, .59, .757, .102,  38]],
     ["GLiNER2.5",    .70, .61, .44, .583, .101, 128, null, "same"],
@@ -928,8 +936,8 @@ latency per decision, and the answer to the ticket.</pre>
   };
   const NOTES = {
     acc: "Mean accuracy over AG News, Banking77 and Emotion, in points against Jev. Bars start at Jev's 0.753.",
-    ms: "p50 per decision. Embedding models on an M5 Max; minicpm5-2b and the decision model on an M4 Pro, where wemm-4b-4bit takes 146 ms. Jev is an API: its figure includes the network.",
-    gb: "Memory held by the model, 4-bit unless noted. Jev and GLiNER: not measured here.",
+    ms: "p50 per decision. Embedding models on an M5 Max; minicpm5-2b, e5-small and the decision model on an M4 Pro, where wemm-4b-4bit takes 146 ms. Jev is an API: its figure includes the network.",
+    gb: "Memory held by the model, 4-bit unless noted (e5-small: 8-bit ONNX). Jev and GLiNER: not measured here.",
   };
   const view = () => BENCH.flatMap(([label, ag, b77, emo, mean, ece, ms, gb, t]) => {
     if (chart.mode === "tuned") {
