@@ -1,5 +1,5 @@
 """Encoders as backbones (jul/encoder.py): torch and onnx read the same vectors, as the model was trained
-to be read, and the rest of jul (calibration checks, autotune, compile) runs on them unchanged.
+to be read, and the rest of jul (calibration checks, autotune, pack) runs on them unchanged.
 
 The model is a tiny random XLM-R (4 layers, width 32) built on the fly, see conftest.py.
 """
@@ -100,9 +100,9 @@ def test_the_8_bit_export_reads_nearly_the_float_vectors(encoders, tiny_encoder,
 
 
 @pytest.mark.skipif(importlib.util.find_spec("sklearn") is None, reason="needs scikit-learn (jul[tune])")
-def test_a_bundle_compiled_on_an_encoder_answers_what_its_client_answers(tiny_encoder, tmp_path, monkeypatch):
+def test_a_bundle_packed_on_an_encoder_answers_what_its_client_answers(tiny_encoder, tmp_path, monkeypatch):
     import jul.presets
-    from jul import Choice, CompiledModel, Context, Noul, TypeSafeClient, compile_questions
+    from jul import Bundle, Choice, Context, Noul, TypeSafeClient, pack
     from jul.presets import Formulation, Preset, repo_fields, save_preset
     monkeypatch.setattr(jul.presets, "PRESET_HOME", tmp_path / "presets")
     _, onnx = tiny_encoder
@@ -121,7 +121,7 @@ def test_a_bundle_compiled_on_an_encoder_answers_what_its_client_answers(tiny_en
     ctx = Context(name="tickets")
     client.autotune(ctx, questions, labeled, features="hybrid", save=False,
                     formulations={"team": ["one_word"], "urgent": ["question"]})
-    bundle = CompiledModel.load(compile_questions(client, questions, tmp_path / "bundle", context=ctx))
+    bundle = Bundle.load(pack(client, questions, tmp_path / "bundle", context=ctx))
     for state in ["refund my invoice now", "the app crashes", "which plan is cheaper?"]:
         want = client.system_one(state=state, questions=questions, context=ctx).answers
         got = bundle.system_one(state).answers

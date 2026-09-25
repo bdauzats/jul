@@ -10,7 +10,7 @@ head trained in seconds on labeled examples while the model itself stays untouch
 """
 
 from .client import AsyncTypeSafeClient, TypeSafeClient
-from .compiled import CompiledModel, compile_questions
+from .bundle import Bundle, pack
 from .context import Context
 from .presets import PRESETS, Preset
 from .tuning import TuningReport
@@ -26,5 +26,5 @@ __all__ = [
     "TypeSafeClient", "AsyncTypeSafeClient",
     "Choice", "Noul", "NoulCriteria", "Score",
     "ChoiceAnswer", "NoulAnswer", "ScoreAnswer", "SystemOneResponse", "Usage",
-    "Context", "TuningReport", "Preset", "PRESETS", "CompiledModel", "compile_questions", "__version__",
+    "Context", "TuningReport", "Preset", "PRESETS", "Bundle", "pack", "__version__",
 ]

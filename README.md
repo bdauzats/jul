@@ -80,7 +80,7 @@ trained on MLX is never applied to PyTorch vectors.
 
 A third backend, **onnx** (ONNX Runtime on CPU), is never picked by default: it reads a model
 exported for it, and exists to deploy JuL where torch does not fit (see [Deploying a fixed
-need](#deploying-a-fixed-need-jul-compile-and-the-onnx-backend)). `JUL_HOME` moves everything JuL
+need](#deploying-a-fixed-need-jul-pack-and-the-onnx-backend)). `JUL_HOME` moves everything JuL
 writes (presets, contexts, calibration data) from `~/.jul` elsewhere, e.g. a read-only Lambda package.
 
 ### The models
@@ -166,7 +166,7 @@ on the Jev bench separately, once.
 ### Micro models: encoders
 
 An encoder (BERT, XLM-R, multilingual-e5…) is a backbone like any other: `jul models add`,
-`autotune` and `jul compile` run on it unchanged, on the torch and onnx backends. JuL recognizes one by
+`autotune` and `jul pack` run on it unchanged, on the torch and onnx backends. JuL recognizes one by
 its `model_type` and reads it as it was trained, not as a decoder (`lib/jul/encoder.py`):
 
 - the vector is the mean of the layer over the whole sequence (the sentence embedding e5 was trained to
@@ -616,7 +616,7 @@ zero-shot in cross-validation is not activated.
 
 A preset reads each question with its formulations (two for the built-in presets). `autotune` may pick
 others, by name, for all questions or per question, and the head remembers them: answering, and
-`jul compile`, use exactly those.
+`jul pack`, use exactly those.
 
 ```python
 client.autotune("tickets", questions, labeled, features="hybrid",
@@ -648,28 +648,31 @@ by option, shown the whole option list and the seeds carrying that option. Seeds
 lines; `answers` may be left out, the text then only informs the style. Synthetic texts are cleaner
 than real ones: keep real labeled examples aside to check what a head trained on them is worth.
 
-## Deploying a fixed need: `jul compile` and the onnx backend
+## Deploying a fixed need: `jul pack` and the onnx backend
 
 When the questions are known in advance, everything that does not depend on the message can be computed
 once: the prompts, their prefix caches, the option vectors, the centers, the heads and calibrations of a
-context. `jul compile` freezes all of it into a directory; `CompiledModel` answers with the message as its
+context. `jul pack` packs all of it into a directory, a bundle; `Bundle` answers with the message as its
 only input, in the format of `system_one`.
 
+Packing trains nothing and changes no model: a bundle holds no weights, it names the model it was
+packed on and is loaded on that model, wherever it runs.
+
 ```bash
-jul compile bundle/ --questions questions.yaml --context tickets --model e5-small --backend onnx
+jul pack bundle/ --questions questions.yaml --context tickets --model e5-small --backend onnx
 ```
 
 ```python
-from jul import CompiledModel, compile_questions
-compile_questions(client, questions, "bundle/", context="tickets")   # the same, from Python
-model = CompiledModel.load("bundle/")
-model.system_one("I was charged twice").answers["team"].choice
-model.system_one_batch(messages)          # every prompt read over all messages in batches
+from jul import Bundle, pack
+pack(client, questions, "bundle/", context="tickets")   # the same, from Python
+bundle = Bundle.load("bundle/")
+bundle.system_one("I was charged twice").answers["team"].choice
+bundle.system_one_batch(messages)          # every prompt read over all messages in batches
 ```
 
-A prompt shared by several questions (`one_word`) is read once per message. Compiling is not tied to a
+A prompt shared by several questions (`one_word`) is read once per message. Packing is not tied to a
 backend — a bundle names the backend its vectors came from, and the code is the same on all three
-(tested on torch and onnx) — but the vectors are: compile on the backend you deploy on (loading on
+(tested on torch and onnx) — but the vectors are: pack on the backend you deploy on (loading on
 another one warns).
 
 **The onnx backend** runs a model exported by JuL on ONNX Runtime, without torch or transformers (the
@@ -683,7 +686,7 @@ python -m jul.backends.onnx_export models/e5-small-onnx models/e5-small-onnx-w8 
 jul models add e5-small --repo models/e5-small-onnx-w8 --backend onnx
 jul autotune tickets --questions questions.yaml --labeled labeled.jsonl --features hybrid \
     --model e5-small --backend onnx
-jul compile bundle/ --questions questions.yaml --context tickets --model e5-small --backend onnx
+jul pack bundle/ --questions questions.yaml --context tickets --model e5-small --backend onnx
 ```
 
 - The graph returns the raw hidden states of the upper half of the layers (`--layers` narrows it), and
@@ -730,7 +733,7 @@ jul context show tickets          # its description, example count, tuned and ca
 jul context delete tickets
 jul synth questions.yaml --seeds sample.jsonl --per-option 30 --output synth.jsonl
 jul autotune tickets --questions questions.yaml --labeled labeled.jsonl --features hybrid
-jul compile bundle/ --questions questions.yaml --context tickets --backend onnx
+jul pack bundle/ --questions questions.yaml --context tickets --backend onnx
 jul models
 jul models add minicpm5-2b-decision --repo usejul/minicpm5-2b-decision-mlx-4bit   # a decision model
 jul models add my-model --repo org/Some-Instruct-3B                                 # fits a preset
@@ -739,7 +742,7 @@ jul setup --model minicpm5-2b-decision    # backend, weights and one timed decis
 
 ### File formats
 
-**Questions** (`questions.yaml`, for `run`, `synth`, `autotune`, `compile`): YAML or JSON, one entry per
+**Questions** (`questions.yaml`, for `run`, `synth`, `autotune`, `pack`): YAML or JSON, one entry per
 question, its name as key. `criteria` is `{key: description}` for a `choice`, the ordered levels for a
 `score`, nothing for a `noul`.
 
@@ -853,7 +856,7 @@ jul/
     synth.py        `jul synth`: synthetic labeled data for autotune
     tuning.py       `autotune(...)`: per-task head (vector, lexical, hybrid), cross-validated, with a safety net
     lexical.py      TF-IDF in numpy, for the lexical and hybrid heads
-    compiled.py     `jul compile`: a fixed need frozen into a bundle, and CompiledModel
+    bundle.py       `jul pack`: a fixed need packed into a bundle, and Bundle
     encoder.py      encoders (BERT, XLM-R, e5) as backbones: the micro models
     home.py         JUL_HOME
     calibrate.py    `jul models add`: checks, extraction, choice of layers / center / tau
@@ -875,7 +878,7 @@ JUL_SLOW=1 pytest tests -m slow    # only the 33 that need a model
 JUL_SLOW=1 pytest tests -m torch   # MLX against PyTorch on the same weights
 ```
 
-The onnx, encoder and compile tests build tiny random models on the fly (a 4-layer Qwen3 and a
+The onnx, encoder and bundle tests build tiny random models on the fly (a 4-layer Qwen3 and a
 4-layer XLM-R), export them with JuL and compare onnx with torch on the same weights; only the
 tokenizers are downloaded (`JUL_TEST_TOKENIZER`, `JUL_TEST_ENCODER_TOKENIZER`). They need
 `jul[onnx-export]` and are skipped without it.

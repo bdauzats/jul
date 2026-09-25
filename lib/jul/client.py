@@ -215,7 +215,7 @@ class TypeSafeClient:
         `features` is what the head reads: "vector" (the model's vectors), "lexical" (TF-IDF of the
         text) or "hybrid" (both); see jul/tuning.py. `formulations` picks the prompts the head reads,
         by name ("one_word", "question_options", "question"), for every question (a list) or per
-        question (a mapping); the head remembers them, so answering and compiling read the same way.
+        question (a mapping); the head remembers them, so answering and packing read the same way.
         """
         ctx = resolve_context(context, self._context_home)
         if ctx is None:

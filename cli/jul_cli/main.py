@@ -194,14 +194,14 @@ def cmd_autotune(a):
     client.close()
 
 
-def cmd_compile(a):
-    from jul.compiled import compile_questions
+def cmd_pack(a):
+    from jul.bundle import MANIFEST, pack
     questions = load_questions(a.questions)
     ctx = Context.load(a.context) if a.context else None
     client = TypeSafeClient(model=a.model, backend=a.backend, context=ctx)
-    path = compile_questions(client, questions, a.out, context=ctx)
-    manifest = json.loads((path / "compiled.json").read_text())
-    print(f"compiled {len(questions)} question(s) on {manifest['preset']['name']} ({manifest['backend']}) "
+    path = pack(client, questions, a.out, context=ctx)
+    manifest = json.loads((path / MANIFEST).read_text())
+    print(f"packed {len(questions)} question(s) on {manifest['preset']['name']} ({manifest['backend']}) "
           f"into {path}: {len(manifest['prompts'])} prompt(s) per state")
     for q in manifest["questions"]:
         how = (f"{q['head'].get('features', 'vector')} head" if q["head"] else
@@ -410,13 +410,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--backend", **backend_kw)
     s.set_defaults(fn=cmd_autotune)
 
-    s = sub.add_parser("compile", help="freeze questions (and a context's heads) into a bundle to deploy")
+    s = sub.add_parser("pack", help="pack questions (and a context's heads) into a bundle to deploy; trains nothing")
     s.add_argument("out", help="directory to write")
     s.add_argument("--questions", required=True)
     s.add_argument("--context", help="context whose heads and calibration the bundle carries")
     s.add_argument("--model", **model_kw)
     s.add_argument("--backend", **backend_kw)
-    s.set_defaults(fn=cmd_compile)
+    s.set_defaults(fn=cmd_pack)
 
     s = sub.add_parser("synth", help="write a synthetic labeled dataset (for a later autotune)")
     s.add_argument("questions")
@@ -457,7 +457,7 @@ def main(argv=None) -> None:
     a = build_parser().parse_args(argv)
     if a.command == "context" and a.action != "list" and not a.name:
         raise SystemExit(f"context {a.action} needs a name")
-    if a.command in {"ask", "run", "autotune", "compile"} or (
+    if a.command in {"ask", "run", "autotune", "pack"} or (
             a.command == "context" and a.action == "create" and a.examples and not a.lazy):
         from jul_cli.setup import require_setup
         require_setup(a.model, a.backend)

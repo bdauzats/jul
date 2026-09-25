@@ -45,7 +45,7 @@ def home(tmp_path):
     return tmp_path / "contexts"
 
 
-# --- a tiny random Qwen3, exported to onnx by jul: for the onnx and compiled tests ---------------
+# --- a tiny random Qwen3, exported to onnx by jul: for the onnx and bundle tests ---------------
 
 @pytest.fixture(scope="session")
 def tiny_models(tmp_path_factory):

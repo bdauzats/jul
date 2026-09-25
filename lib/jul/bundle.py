@@ -1,22 +1,25 @@
-"""Compiled questions: a fixed need, frozen once, answered with the state as the only input.
+"""Bundles: a fixed need, packed once, answered with the state as the only input.
 
-`compile_questions` runs everything that does not depend on the state and writes it to a directory:
+`pack` runs everything that does not depend on the state and writes it to a directory, a bundle:
 the rendered prompt of every pass (formulation x question), its layer, its option vectors and its
-center, and the tuned head or the calibration a context holds for the question. `CompiledModel`
+center, and the tuned head or the calibration a context holds for the question. `Bundle`
 loads that directory on a backbone and answers `system_one(state)` / `system_one_batch(states)` in
-the format of `TypeSafeClient.system_one`, without compiling anything again. Each distinct prompt
+the format of `TypeSafeClient.system_one`, without preparing anything again. Each distinct prompt
 prefix is run once at load and kept as the backbone's prefix cache (a KV cache on torch, MLX and
 the onnx exports that have one), so a call pays for the state's tokens only; a prompt shared by
 several questions (the "one word" formulation) is read once per state.
 
-Compiling is not tied to a backend: the bundle names the backend its vectors were computed with,
+Packing is not tied to a backend: the bundle names the backend its vectors were computed with,
 and loading it on another one warns, since the vectors differ between weights (MLX 4-bit against
-torch bf16 is ~0.95 cosine). Compile on the backend you deploy on, or on one whose vectors match it
+torch bf16 is ~0.95 cosine). Pack on the backend you deploy on, or on one whose vectors match it
 (the onnx 8-bit export matches float32 within ~0.9995).
 
-    jul compile bundle/ --questions questions.yaml --context tickets --backend onnx
-    model = jul.CompiledModel.load("bundle/")
-    model.system_one("I was charged twice")
+    jul pack bundle/ --questions questions.yaml --context tickets --backend onnx
+    bundle = jul.Bundle.load("bundle/")
+    bundle.system_one("I was charged twice")
+
+A bundle holds no weights: it names the model (preset and repo) and is loaded on it, wherever that
+runs. Nothing here trains or changes a model.
 """
 
 from __future__ import annotations
@@ -37,13 +40,13 @@ from .presets import Preset
 from .types import Option, SystemOneResponse, Usage, serialize_state
 
 FORMAT = 1
-MANIFEST = "compiled.json"
+MANIFEST = "bundle.json"
 ARRAYS = "arrays.npz"
 
 
 @dataclass
 class _Pass:
-    prompt: int                    # index into CompiledModel.prompts
+    prompt: int                    # index into Bundle.prompts
     layer: int
     centered_options: np.ndarray   # (K, d)
     center: np.ndarray             # (d,)
@@ -59,7 +62,7 @@ class _Question:
     calibration: tuple[float, np.ndarray] | None
 
 
-def compile_questions(client, questions: dict, out: str | Path, context=None, model: str | None = None) -> Path:
+def pack(client, questions: dict, out: str | Path, context=None, model: str | None = None) -> Path:
     """Freeze `questions` as `client` answers them (its preset and backend, `context`'s heads and
     calibration) into the directory `out`."""
     from .client import _kind_of
@@ -69,7 +72,7 @@ def compile_questions(client, questions: dict, out: str | Path, context=None, mo
     ctx = resolve_context(context, client._context_home) if context is not None else client.context
     engine = client._engine_for(model)
     if engine.pointer is not None:
-        raise ValueError(f"{client.model!r} is a decision model (pointer method): only the vector method compiles")
+        raise ValueError(f"{client.model!r} is a decision model (pointer method): only the vector method packs")
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     prompts: list[tuple[str, str]] = []
@@ -105,14 +108,14 @@ def compile_questions(client, questions: dict, out: str | Path, context=None, mo
     manifest = {"format": FORMAT, "preset": preset.to_json(), "backend": engine.backbone.backend,
                 "model_key": engine.backbone.key, "repo": engine.backbone.repo, "tau": preset.tau,
                 "prompts": [{"prefix": a, "suffix": b} for a, b in prompts], "questions": manifest_questions,
-                "context": getattr(ctx, "name", None), "compiled": time.strftime("%Y-%m-%d")}
+                "context": getattr(ctx, "name", None), "packed": time.strftime("%Y-%m-%d")}
     (out / MANIFEST).write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
     np.savez(out / ARRAYS, **arrays)
     return out
 
 
-class CompiledModel:
-    """A compiled bundle on a backbone. See the module docstring."""
+class Bundle:
+    """A bundle loaded on a backbone. See the module docstring."""
 
     def __init__(self, manifest: dict, arrays: dict, backbone: Backbone):
         self.manifest = manifest
@@ -137,16 +140,16 @@ class CompiledModel:
         self._reads = sorted({(p.prompt, p.layer) for q in self.questions for p in q.passes})
 
     @classmethod
-    def load(cls, path: str | Path, backend: str | None = None, model: str | None = None) -> "CompiledModel":
+    def load(cls, path: str | Path, backend: str | None = None, model: str | None = None) -> "Bundle":
         """`model` replaces the repo or directory of the weights the bundle names (same weights, moved)."""
         from .backbone import MODELS, resolve_backend
         path = Path(path)
         manifest = json.loads((path / MANIFEST).read_text())
         if manifest.get("format") != FORMAT:
-            raise ValueError(f"{path}: compiled format {manifest.get('format')!r}, this jul reads {FORMAT}")
+            raise ValueError(f"{path}: bundle format {manifest.get('format')!r}, this jul reads {FORMAT}")
         backend = resolve_backend(backend or manifest["backend"])
         if backend != manifest["backend"]:
-            warnings.warn(f"{path} was compiled on {manifest['backend']}: its option vectors, centers and "
+            warnings.warn(f"{path} was packed on {manifest['backend']}: its option vectors, centers and "
                           f"heads may not match {backend}'s vectors", stacklevel=2)
         repo = model or manifest["preset"]["repos"].get(backend) or manifest["repo"]
         name = manifest["preset"]["name"]
