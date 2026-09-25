@@ -23,7 +23,9 @@ Pick a backend: MLX on Apple Silicon, PyTorch (transformers) anywhere else — C
 ```bash
 pip install "jul[mlx]"        # Apple Silicon
 pip install "jul[torch]"      # Linux / Windows / any GPU
-# add [yaml] for YAML question files
+pip install "jul[onnx]"       # CPU only, no torch: to deploy an exported model (AWS Lambda, containers)
+# add [yaml] for YAML question files, [tune] for lexical and hybrid autotune heads,
+# [onnx-export] to export a model for the onnx backend
 ```
 
 From a checkout, to work on jul itself: `pip install -e ".[dev]"`.
@@ -76,7 +78,10 @@ measured values. A backend-specific center is picked up from `assets/<preset>.<b
 when it exists. Centers, heads and calibrations saved in a context are keyed per backend, so a head
 trained on MLX is never applied to PyTorch vectors.
 
-The research code under `jul.lab` still trains its heads with MLX.
+A third backend, **onnx** (ONNX Runtime on CPU), is never picked by default: it reads a model
+exported for it, and exists to deploy jul where torch does not fit (see [Deploying a fixed
+need](#deploying-a-fixed-need-jul-compile-and-the-onnx-backend)). `JUL_HOME` moves everything jul
+writes (presets, contexts, calibration data) from `~/.jul` elsewhere, e.g. a read-only Lambda package.
 
 ### The models
 
@@ -127,6 +132,12 @@ one command away,
 | `ternary-bonsai-1.7b` | [`prism-ml/Ternary-Bonsai-1.7B-mlx-2bit`](https://huggingface.co/prism-ml/Ternary-Bonsai-1.7B-mlx-2bit) | 0.46 GB | 0.640 | 0.760 |
 | `ternary-bonsai-8b` | [`prism-ml/Ternary-Bonsai-8B-mlx-2bit`](https://huggingface.co/prism-ml/Ternary-Bonsai-8B-mlx-2bit) | 1.75 GB | 0.563 | 0.753 |
 | `bitnet-2b` | [`mlx-community/bitnet-b1.58-2B-4T`](https://huggingface.co/mlx-community/bitnet-b1.58-2B-4T) | 1.1 GB | 0.617 | 0.723 |
+| `e5-small` | [`intfloat/multilingual-e5-small`](https://huggingface.co/intfloat/multilingual-e5-small), onnx 8-bit | **0.09 GB** | 0.587 | 0.670 (**0.770** hybrid) |
+
+`+ autotune` is a head on the vectors (`features="vector"`). With a hybrid head (vectors + TF-IDF, see
+[`features=`](#what-the-head-reads-features)), `e5-small` — an encoder, see [Micro models](#micro-models-encoders) —
+reaches **0.770**, above Jev's 0.753 (AG News 0.92, Banking77 0.84, Emotion 0.55), at 21 ms per text on
+an M4 Pro. The other models were not measured with a hybrid head.
 
 ### Adding a model
 
@@ -151,6 +162,33 @@ The calibration data is downloaded once from BTZSC into `~/.jul/calibration-data
 `pip install "jul[calibrate]"`), or taken from `--data <dir>`. The dev accuracy it reports comes
 with its standard error (±3.5 points at n=200): it orients, it does not rank close models. Measure
 on the Jev bench separately, once.
+
+### Micro models: encoders
+
+An encoder (BERT, XLM-R, multilingual-e5…) is a backbone like any other: `jul models add`,
+`autotune` and `jul compile` run on it unchanged, on the torch and onnx backends. jul recognizes one by
+its `model_type` and reads it as it was trained, not as a decoder (`lib/jul/encoder.py`):
+
+- the vector is the mean of the layer over the whole sequence (the sentence embedding e5 was trained to
+  produce), not a last token; zero-shot is plain embedding similarity between state and options;
+- the prompts are the model's own input convention (`query: {state}` for e5), no chat template and no
+  "in one word" cue (`Backbone.templates`);
+- attention is bidirectional, so no prefix can be cached: the prefix runs again with each query, and a
+  sequence is cut to the model's positions (512), the input first, then the prefix;
+- no logits: the letters reading and decision models need a decoder.
+
+```bash
+python -m jul.backends.onnx_export intfloat/multilingual-e5-small models/e5-small-onnx
+python -m jul.backends.onnx_export models/e5-small-onnx models/e5-small-onnx-w8 --int8   # 86 MB
+jul models add e5-small --repo models/e5-small-onnx-w8 --backend onnx
+```
+
+Why bother: on a support-triage task (jul-lambda, 2026-09-25), multilingual-e5-small (21 M
+parameters outside its embedding) with a hybrid head matched Harrier 0.6B (440 M) — emotion 0.787
+against 0.791, Banking77 0.890 against 0.890 — in **4 ms per message against 37 ms** on an M4 Pro,
+and 17 ms on a 1,769 MB AWS Lambda ($0.59 per million calls, cold start 2.4 s). Zero-shot, on the
+calibration dev sets, it scored 0.590 against 0.475 for Harrier 0.6B. The heads carry it: alone,
+zero-shot, a small encoder is no match for a 4B embedding model.
 
 ### Decision models
 
@@ -273,8 +311,14 @@ weights: **868 ms → 77 ms at equal accuracy**.
 | `route_above=N` | per call | the model's value | overrides that threshold; `0` disables routing |
 | `method=` | per call or client | `"vector"` | `vector` or `letters`; ignored on a pointer preset |
 | `one_word_only=` | client | `False` | one formulation instead of two: faster, a little less accurate |
-| `backend=` | client, or `JUL_BACKEND` | auto | `mlx` or `torch` |
+| `backend=` | client, or `JUL_BACKEND` | auto | `mlx` or `torch`; `onnx` only when asked |
 | `JUL_BATCH_TOKENS` / `JUL_BATCH_SIZE` | environment | per backend | how many rows the backbone batches at once |
+| `features=` | `autotune` | `"vector"` | what a tuned head reads: `vector`, `lexical` (TF-IDF) or `hybrid` |
+| `formulations=` | `autotune` | the preset's | the prompts a question is read with, by name, per question if a dict |
+| `JUL_HOME` | environment | `~/.jul` | where presets, contexts and calibration data live |
+| `JUL_ONNX_MODEL` | environment | the export's graph | another graph for the onnx backend: a path or `s3://bucket/key` |
+| `JUL_ONNX_THREADS` | environment | ONNX Runtime's | intra-op threads (on Lambda: one per whole vCPU) |
+| `JUL_ONNX_MAX_TOKENS` / `JUL_ONNX_BATCH_TOKENS` | environment | 2048 / 2048 | longest row, and rows × longest per run, on onnx |
 
 **Routing trades accuracy for speed, and the trade is not free.** Measured on massive by subsampling one
 set's own options — so the option count is not confounded with the task — the pointer head is better at
@@ -481,9 +525,9 @@ client.system_one(state, questions, context=tickets)           # or per call
 | `description` | prepended as `Context: …` to both formulations   | nil (sits in the cached prefix) | **off by default, measured harmful on average** — `use_description=True` to try it                            |
 | `examples`    | their mean vector becomes the center of the task | computed once                   | measured: helps on topics (AG News 0.66 → 0.75), slightly hurts on fine-grained tasks (Banking77 0.55 → 0.53) |
 
-A task center is the best center measured (JOURNAL §9 octies), which is the main
+A task center is the best center measured, which is the main
 reason to bother with a context at all. **Ten examples already capture most of the gain, fifty is the
-sweet spot, two hundred adds nothing** (JOURNAL §9 decies). Below ten the center is noise and can be
+sweet spot, two hundred adds nothing**. Below ten the center is noise and can be
 worse than no context at all — with 5 examples, a ticket rated `billing` at 0.98 flipped to a wrong
 `technical`. `Context` warns under ten.
 
@@ -496,7 +540,7 @@ MiniCPM gained 1.3 points on average with one dataset losing 4, and a 9B model l
 | `labeled` | fits a temperature and a per-option bias | computed once | proven, but makes any comparison with Jev unfair |
 
 Adding information to a prompt does not always help: listing the options helped on topics and
-emotions but hurt on sentiment (JOURNAL §9 quater). Measure before trusting the description.
+emotions but hurt on sentiment. Measure before trusting the description.
 
 Contexts are cached on disk under `~/.jul/contexts/<name>/` and can be reused by name:
 
@@ -535,8 +579,8 @@ three errors are each worth under 3 points.
 | above it                      | a head is trained, and kept only if it beats zero-shot in cross-validation |
 
 The floor scales with the number of options because that is what the measurement showed: 200 examples
-is plenty for 4 options and not enough for Banking77's 72. Measured gains at 1000 examples (JOURNAL
-§9 nonies, on a validation split, ±3.5 points):
+is plenty for 4 options and not enough for Banking77's 72. Measured gains at 1000 examples (on a
+validation split, ±3.5 points):
 
 |             | AG News       | Emotion       | Banking77     |
 | ----------- | ------------- | ------------- | ------------- |
@@ -547,6 +591,47 @@ fewer: on the Jev bench, `wemm-4b-4bit` goes from 0.857 to 0.897 with 1000.
 
 A head only knows the options it saw, and only the preset whose vectors it saw: change either and you
 call `autotune(...)` again.
+
+### What the head reads: `features=`
+
+```python
+client.autotune("tickets", questions, labeled, features="hybrid")   # "vector" (default), "lexical", "hybrid"
+```
+
+- **vector** — the model's vectors, as above.
+- **lexical** — TF-IDF of the text (words 1-2 and characters 2-5, `lib/jul/lexical.py`), no model at all
+  in the head. A baseline worth having: it is what a head must beat.
+- **hybrid** — both, one head over the concatenation, the weight of each part chosen on an inner split.
+  What the vectors miss, the words often carry: on dair-ai/emotion, Harrier 0.6B vectors alone gave
+  0.734, TF-IDF alone 0.751, the hybrid head 0.797.
+
+`vector` is the default. `hybrid` usually does better: on the Jev bench, `e5-small` goes from 0.670
+with a vector head to 0.770 with a hybrid one.
+
+Lexical and hybrid heads train with scikit-learn (`pip install "jul[tune]"`) and run with numpy alone:
+the vocabulary and idf are saved with the head. The same safety net applies: a head that does not beat
+zero-shot in cross-validation is not activated.
+
+### Which prompts: `formulations=`
+
+A preset reads each question with its formulations (two for the built-in presets). `autotune` may pick
+others, by name, for all questions or per question, and the head remembers them: answering, and
+`jul compile`, use exactly those.
+
+```python
+client.autotune("tickets", questions, labeled, features="hybrid",
+                formulations={"mood": ["question_options"], "intent": ["question"]})
+```
+
+| Name | Prompt | Passes per state |
+| --- | --- | --- |
+| `one_word` | the state alone, no question: shared by every question of a call | 1 for all questions |
+| `question_options` | the question and its options | 1 per question |
+| `question` | the question without its options: a short prefix whatever the number of options | 1 per question |
+
+With a tuned head, listing the options mattered for 6 emotions (0.884 against 0.852) and not for
+Banking77's 72 intents (0.900 with, 0.910 without). `one_word` for every question is the fastest (one
+pass per message, whatever the number of questions) and gave 0.791 / 0.890 on those two tasks.
 
 ### Not enough labeled examples? `jul synth`
 
@@ -563,6 +648,74 @@ by option, shown the whole option list and the seeds carrying that option. Seeds
 lines; `answers` may be left out, the text then only informs the style. Synthetic texts are cleaner
 than real ones: keep real labeled examples aside to check what a head trained on them is worth.
 
+## Deploying a fixed need: `jul compile` and the onnx backend
+
+When the questions are known in advance, everything that does not depend on the message can be computed
+once: the prompts, their prefix caches, the option vectors, the centers, the heads and calibrations of a
+context. `jul compile` freezes all of it into a directory; `CompiledModel` answers with the message as its
+only input, in the format of `system_one`.
+
+```bash
+jul compile bundle/ --questions questions.yaml --context tickets --model e5-small --backend onnx
+```
+
+```python
+from jul import CompiledModel, compile_questions
+compile_questions(client, questions, "bundle/", context="tickets")   # the same, from Python
+model = CompiledModel.load("bundle/")
+model.system_one("I was charged twice").answers["team"].choice
+model.system_one_batch(messages)          # every prompt read over all messages in batches
+```
+
+A prompt shared by several questions (`one_word`) is read once per message. Compiling is not tied to a
+backend — a bundle names the backend its vectors came from, and the code is the same on all three
+(tested on torch and onnx) — but the vectors are: compile on the backend you deploy on (loading on
+another one warns).
+
+**The onnx backend** runs a model exported by jul on ONNX Runtime, without torch or transformers (the
+tokenizer is read with `tokenizers` alone). With e5-small in 8 bits, the whole Lambda package, model
+included, is 225 MB.
+
+```bash
+pip install "jul[onnx-export]"
+python -m jul.backends.onnx_export intfloat/multilingual-e5-small models/e5-small-onnx
+python -m jul.backends.onnx_export models/e5-small-onnx models/e5-small-onnx-w8 --int8
+jul models add e5-small --repo models/e5-small-onnx-w8 --backend onnx
+jul autotune tickets --questions questions.yaml --labeled labeled.jsonl --features hybrid \
+    --model e5-small --backend onnx
+jul compile bundle/ --questions questions.yaml --context tickets --model e5-small --backend onnx
+```
+
+- The graph returns the raw hidden states of the upper half of the layers (`--layers` narrows it), and
+  for a decoder takes and returns a **KV cache**: each prompt prefix runs once, a message pays for its
+  own tokens only (266 → 134 ms per message on Harrier 0.6B, same vectors).
+- `--int8`: 8-bit weights (MatMulNBits, blocks of 32, int8 compute), within a cosine of 0.9995 of
+  float32 on an M4 and on AWS Graviton alike. Dynamic int8 quantization was tried first and returned
+  wrong vectors on Graviton2 (cosine ~0.85). An encoder's embedding table is also quantized, at 4 bits
+  (e5-small: 470 → 86 MB).
+- The exported attention is not memory-efficient: rows are capped at `JUL_ONNX_MAX_TOKENS` (the end of
+  the input is cut, the prompt kept) and batches at `JUL_ONNX_BATCH_TOKENS`. Without those caps, one
+  17k-token text asked for ~20 GB.
+- No logits and no final norm: the letters reading and decision models need mlx or torch.
+- `JUL_ONNX_MODEL=s3://bucket/key` reads the graph from S3 into memory, for a graph too big for a
+  package (Harrier 0.6B in 8 bits: 1.1 GB).
+
+Measured on AWS Lambda arm64, eu-west-1 prices, two questions per message (intent among 72, emotion
+among 6), by the jul-lambda showcase (CDK, not published yet):
+
+| Model | Reading (formulations) | Head (features) | Passes | Accuracy (emotion / intent) | Lambda | Per message | Per million |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **multilingual-e5-small** | direct: `one_word` for both | hybrid | 1 | 0.787 / 0.890 | 1,769 MB | **17 ms** | **$0.59** |
+| Harrier 0.6B, 8-bit | direct: `one_word` for both | hybrid | 1 | 0.791 / 0.890 | 4 GB | 164 ms | $8.95 |
+| Harrier 0.6B, 8-bit | mixed: emotion `question_options`, intent `question` | hybrid | 2 | 0.883 / 0.910 | 4 GB, batch 32 | — | $13.76 |
+
+The reading is which prompts a message is read with (`formulations=`); the head is what the tuned head
+reads (`features=`). All three bundles use hybrid heads.
+
+e5-small is the one to deploy: same accuracy as Harrier read the same way, ten times faster, fifteen times
+cheaper, a 2.4 s cold start with the model in the package. Harrier's extra passes (`mixed`) buy emotion
+points at 23 times the price.
+
 ## Command line
 
 ```bash
@@ -572,17 +725,23 @@ jul ask choice "Which team should handle this ticket?" \
 
 jul run questions.yaml --input tickets.jsonl --output answers.jsonl --context tickets
 jul context create tickets --description "Support tickets of an online bank" --examples sample.txt
-jul context list | show tickets | delete tickets
+jul context list                  # the saved contexts
+jul context show tickets          # its description, example count, tuned and calibrated questions
+jul context delete tickets
 jul synth questions.yaml --seeds sample.jsonl --per-option 30 --output synth.jsonl
-jul autotune tickets --questions questions.yaml --labeled labeled.jsonl
+jul autotune tickets --questions questions.yaml --labeled labeled.jsonl --features hybrid
+jul compile bundle/ --questions questions.yaml --context tickets --backend onnx
 jul models
 jul models add minicpm5-2b-decision --repo usejul/minicpm5-2b-decision-mlx-4bit   # a decision model
 jul models add my-model --repo org/Some-Instruct-3B                                 # fits a preset
 jul setup --model minicpm5-2b-decision    # backend, weights and one timed decision
-jul lab ...        # the research commands of the prototype
 ```
 
-The JSON printed has the same shape as a Jev API response. A question file is YAML or JSON:
+### File formats
+
+**Questions** (`questions.yaml`, for `run`, `synth`, `autotune`, `compile`): YAML or JSON, one entry per
+question, its name as key. `criteria` is `{key: description}` for a `choice`, the ordered levels for a
+`score`, nothing for a `noul`.
 
 ```yaml
 team:
@@ -600,9 +759,44 @@ frustration:
   criteria: [Calm, Frustrated but civil, Very angry]
 ```
 
+**Labeled examples** (`labeled.jsonl`, for `autotune`): one JSON object per line, the text in `state`
+(or `text`) and one answer per question in `answers` — the option key for a `choice`, `true`/`false` for
+a `noul`, the index of the level for a `score` (0 = the first, lowest level). The answers may also sit at the top level, named after the questions.
+
+```json
+{"state": "I was charged twice for my subscription", "answers": {"team": "billing", "is_bug": false, "frustration": 1}}
+{"state": "The app crashes every time I export", "answers": {"team": "technical", "is_bug": true, "frustration": 2}}
+{"text": "Do you have a yearly plan?", "team": "billing", "is_bug": false, "frustration": 0}
+```
+
+**Seeds** (`sample.jsonl`, for `synth --seeds`): the same lines, with `answers` optional — a seed without
+answers only informs the style of the texts written.
+
+```json
+{"state": "hi, my card got declined at the station again", "answers": {"team": "billing"}}
+{"state": "ur app logged me out 3 times today"}
+```
+
+**Examples of a context** (`sample.txt`, for `context create --examples`): one text per line, or a
+`.jsonl` with a `text` field per line.
+
+```text
+I was charged twice for my subscription
+The app crashes every time I export
+Do you have a yearly plan?
+```
+
+**Input of `run`** (`tickets.jsonl`): one message per line, a string or `{"state": ..., "id": ...}`; the
+`id` is copied to the output. **Output** (`answers.jsonl`): one line per message, the shape of a Jev API
+response:
+
+```json
+{"request_id": "c3b355de-…", "model": "e5-small", "usage": {"input_tokens": 9, "output_tokens": 0, "total_tokens": 9}, "answers": {"team": {"choice": "billing", "probabilities": {"billing": 0.91, "technical": 0.06, "sales": 0.03}, "confidence": 0.91}}, "id": "T-1042"}
+```
+
 ## What is measured, and what is not
 
-Measured (see `docs/JOURNAL.md`):
+Measured:
 
 - Both presets' layer and temperature, on dev datasets only.
 - Vectors beating letters for `Noul` and `Score`, on data disjoint from the benchmark.
@@ -619,7 +813,7 @@ Not yet measured — do not rely on these without checking:
   vs 0.238) and on the 9-case ordinal set (7/9 vs 6/9). But **both readings still have a threshold
   bias** — they rank well (AUC 0.87–0.99) and decide badly. Fix it with `client.autotune(...)` on a
   few dozen labeled examples. `method="letters"` keeps the old reading.
-- **Centering**: measured (JOURNAL §9 octies). Not centering costs 4.5–8.5 points, so always centre.
+- **Centering**: measured. Not centering costs 4.5–8.5 points, so always centre.
   Which centre matters less, and differently per model: on MiniCPM the generic centre gains 4 points
   over the option mean. **The best centre is the task's own**, i.e.
   `Context(examples=…)`, for both models — 200 examples per strategy though, so ±3.5 points.
@@ -651,18 +845,22 @@ embedding models — only `Choice` is so far.
 jul/
   lib/jul/          the library — the CLI never imports anything else
     types.py        questions and answers, same fields as the Jev SDK
-    presets.py      the two presets: repo, layers, tau, centers
+    presets.py      the presets: repos, formulations, layers, tau, centers
     engine.py       the vector method: formulations, cached prefixes, combination
     decision.py     the pointer method: a decision model read with its own decision.json
     client.py       TypeSafeClient / AsyncTypeSafeClient
     context.py      Context: description, examples, labeled; disk cache
     synth.py        `jul synth`: synthetic labeled data for autotune
-    tuning.py       `autotune(...)`: per-task head, cross-validated, with a safety net
+    tuning.py       `autotune(...)`: per-task head (vector, lexical, hybrid), cross-validated, with a safety net
+    lexical.py      TF-IDF in numpy, for the lexical and hybrid heads
+    compiled.py     `jul compile`: a fixed need frozen into a bundle, and CompiledModel
+    encoder.py      encoders (BERT, XLM-R, e5) as backbones: the micro models
+    home.py         JUL_HOME
     calibrate.py    `jul models add`: checks, extraction, choice of layers / center / tau
     backbone.py     the backend interface: tap layers, stop early, cached prefix; picks the backend
-    backends/       mlx.py (mlx-lm) and torch.py (transformers)
+    backends/       mlx.py (mlx-lm), torch.py (transformers), onnx.py (ONNX Runtime) and
+                    onnx_export.py (the export, KV cache, 8-bit weights)
     calibration.py  temperature and per-option bias
-    lab/            research code, kept out of the public API
   cli/jul_cli/      the command line
   scripts/          data preparation, tuning experiments, the benchmark
   tests/            fast tests, plus a slow suite that loads the models
@@ -671,11 +869,16 @@ jul/
 ## Tests
 
 ```bash
-pytest tests                       # 94 tests, a few seconds, no model and no data
-JUL_SLOW=1 pytest tests            # all 127, downloads and loads the presets
+pytest tests                       # 126 tests, ~30 seconds, no model and no data
+JUL_SLOW=1 pytest tests            # all 159, downloads and loads the presets
 JUL_SLOW=1 pytest tests -m slow    # only the 33 that need a model
 JUL_SLOW=1 pytest tests -m torch   # MLX against PyTorch on the same weights
 ```
+
+The onnx, encoder and compile tests build tiny random models on the fly (a 4-layer Qwen3 and a
+4-layer XLM-R), export them with jul and compare onnx with torch on the same weights; only the
+tokenizers are downloaded (`JUL_TEST_TOKENIZER`, `JUL_TEST_ENCODER_TOKENIZER`). They need
+`jul[onnx-export]` and are skipped without it.
 
 **`JUL_SLOW` is a test-only switch**, read by `tests/conftest.py` and by nothing in the library. The
 33 tests marked `@pytest.mark.slow` load a real model, so a plain `pytest` skips them rather than

@@ -10,11 +10,13 @@ Three variants, reported separately because only the first is a fair comparison:
   context     a Context holding 50 unlabeled texts of the task (task center). NOT comparable: Jev
               gets nothing. The description is left off, measured harmful on average (JOURNAL §9 decies).
   tuned       a per-task head trained on 1000 labeled rows disjoint from the benchmark. NOT comparable.
+  tuned-hybrid  the same, the head reading the vectors and the TF-IDF of the text (features="hybrid",
+              needs jul[tune]). Not run by default.
 
 Everything goes through `jul.TypeSafeClient`, never through the engine, so this measures the library
 a user would install.
 
-Usage: scripts/bench_jul.py <model> [variants]
+Usage: [JUL_BACKEND=onnx] scripts/bench_jul.py <model> [variants, comma-separated]
 """
 
 import json
@@ -77,15 +79,16 @@ for variant in VARIANTS:
         questions = {"label": Choice(instructions=QUESTION, criteria=criteria)}
 
         context = None
-        if variant in ("context", "tuned"):
+        if variant in ("context", "tuned", "tuned-hybrid"):
             train = training_rows(ds)
             context = Context(examples=[r["text"] for r in train][:N_CONTEXT], use_description=False)
-        if variant == "tuned":
+        if variant.startswith("tuned"):
             index = {label: key for key, label in criteria.items()}
             labeled = [(r["text"], {"label": index[r["label"]]}) for r in training_rows(ds)]
             t0 = time.perf_counter()
-            report = client.autotune(context, questions, labeled, save=False)["label"]
-            notes[f"{ds}/tuned"] = {"activated": report.activated, "reason": report.reason,
+            features = "hybrid" if variant == "tuned-hybrid" else "vector"
+            report = client.autotune(context, questions, labeled, save=False, features=features)["label"]
+            notes[f"{ds}/{variant}"] = {"activated": report.activated, "reason": report.reason,
                                     "seconds": round(time.perf_counter() - t0, 1)}
             print(f"  [{ds}] head: {'ACTIVE' if report.activated else 'refused'} — {report.reason}",
                   flush=True)
