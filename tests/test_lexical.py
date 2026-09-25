@@ -42,7 +42,11 @@ def test_the_tfidf_round_trips_through_arrays_and_ignores_unknown_terms():
     assert np.array_equal(rows.indices, rows_again.indices) and np.allclose(rows.data, rows_again.data)
     assert rows.indptr[-1] == rows.indptr[-2]          # nothing known in "zzz qqq"
     weights = np.random.default_rng(0).normal(size=(model.n_features, 3))
-    assert np.allclose(rows.dot(weights)[:-1], rows.scipy()[:-1] @ weights)
+    dense = np.zeros((len(rows), model.n_features))
+    for i in range(len(rows)):
+        a, b = rows.indptr[i], rows.indptr[i + 1]
+        dense[i, rows.indices[a:b]] = rows.data[a:b]
+    assert np.allclose(rows.dot(weights), dense @ weights)
 
 
 @needs_sklearn

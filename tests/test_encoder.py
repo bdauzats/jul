@@ -8,7 +8,6 @@ import importlib.util
 
 import numpy as np
 import pytest
-import torch
 
 from jul.backbone import Backbone, PromptTemplate
 from jul.encoder import templates
@@ -38,6 +37,7 @@ def test_an_encoder_is_recognized_on_both_backends(encoders):
 
 def test_the_vector_is_the_mean_the_model_was_trained_on(encoders, tiny_encoder):
     """First half: the masked mean over [CLS] prompt [SEP], sentence-transformers' pooling."""
+    import torch
     from transformers import AutoModel, AutoTokenizer
     hf, _ = tiny_encoder
     tok, model = AutoTokenizer.from_pretrained(hf), AutoModel.from_pretrained(hf).eval()
