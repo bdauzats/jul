@@ -105,7 +105,10 @@ main {
   border: 3px double var(--ph);
   box-shadow: 1.2ch .9em 0 var(--faint);
 }
-.win.ascii { border: 0; }
+.win.ascii { border: 0; display: flex; flex-direction: column; }
+/* A grid row stretches its windows to the tallest one: the frame follows, so the shadow does too. */
+.win.ascii > .w-mid { flex: 1; }
+.win.collapsed { align-self: start; }
 .w-top, .w-bot { display: flex; white-space: pre; line-height: 1; overflow: hidden; }
 .w-fill { flex: 1; min-width: 0; overflow: hidden; }
 .w-title { background: var(--ph); color: var(--ink); text-shadow: none; padding: 0 1ch; white-space: pre; }
@@ -144,6 +147,8 @@ h2.h { font-family: var(--crt); font-weight: 400; font-size: 2rem; line-height: 
 .term { min-height: 24em; white-space: pre-wrap; word-break: break-word; line-height: 1.35; }
 .term .cmd::before { content: "C:\\JUL> "; color: var(--dim); }
 .term .ok { color: var(--dim); }
+.w-body:has(> .term) { display: flex; flex-direction: column; }
+.w-body > .term { flex: 1; }
 .term-bar { display: flex; justify-content: space-between; gap: 2ch; flex-wrap: wrap; margin-top: .8em; color: var(--dim); }
 
 /* ── lists, tables ────────────────────────────────────────────────────── */
@@ -461,7 +466,7 @@ r.choices["team"].probabilities  <span class="dim"># {"billing": 0.88, ...}</spa
         <tr><th scope="row">jul minicpm5-2b-decision ¹</th><td data-v="0.91">0.91</td><td data-v="0.79">0.79</td><td data-v="0.69">0.69</td><td data-v="0.796">0.796</td><td data-v="0.133">0.133</td><td data-v="217">217 ms</td><td data-v="1.3">1.3 GB</td></tr>
         <tr class="jev"><th scope="row">Jev (published)</th><td data-v="0.91">0.91</td><td data-v="0.87">0.87</td><td data-v="0.48">0.48</td><td data-v="0.753">0.753</td><td data-v="0.156">0.156</td><td data-v="246">246 ms</td><td data-v="">hosted</td></tr>
         <tr><th scope="row">jul harrier-0.6b ²</th><td data-v="0.72">0.72</td><td data-v="0.52">0.52</td><td data-v="0.76">0.76</td><td data-v="0.667">0.667</td><td data-v="0.144">0.144</td><td data-v="13">13 ms</td><td data-v="0.31">0.31 GB</td></tr>
-        <tr><th scope="row">jul e5-small ³</th><td data-v="0.73">0.73</td><td data-v="0.6">0.60</td><td data-v="0.43">0.43</td><td data-v="0.587">0.587</td><td data-v="0.112">0.112</td><td data-v="22">22 ms</td><td data-v="0.09">0.09 GB</td></tr>
+        <tr><th scope="row">jul e5-small ³</th><td data-v="0.6">0.60</td><td data-v="0.6">0.60</td><td data-v="0.43">0.43</td><td data-v="0.543">0.543</td><td data-v="0.075">0.075</td><td data-v="6">6 ms</td><td data-v="0.09">0.09 GB</td></tr>
         <tr><th scope="row">jul minicpm5-2b</th><td data-v="0.8">0.80</td><td data-v="0.59">0.59</td><td data-v="0.46">0.46</td><td data-v="0.617">0.617</td><td data-v="0.113">0.113</td><td data-v="64">64 ms</td><td data-v="2.7">2.7 GB</td></tr>
         <tr><th scope="row">GLiNER2.5 (published)</th><td data-v="0.7">0.70</td><td data-v="0.61">0.61</td><td data-v="0.44">0.44</td><td data-v="0.583">0.583</td><td data-v="0.101">0.101</td><td data-v="128">128 ms</td><td data-v="">—</td></tr>
       </tbody>
@@ -476,7 +481,7 @@ r.choices["team"].probabilities  <span class="dim"># {"billing": 0.88, ...}</spa
       </ul>
       <ul class="dos">
         <li><span>With 1,000 labeled examples, <b>wemm-4b-4bit reaches 0.897</b> and 0.94 on Banking77. Harrier-0.6B passes Jev in 0.31 GB at 13 ms.</span></li>
-        <li><span>³ multilingual-e5-small, a 118M-parameter encoder (ONNX, 8-bit, M4 Pro). Alone it is at GLiNER's level; <b>with a hybrid head (vectors + TF-IDF) it reaches 0.770</b>, above Jev, at 21 ms and 17 ms on AWS Lambda.</span></li>
+        <li><span>³ multilingual-e5-small, a 118M-parameter encoder (ONNX, 8-bit, M4 Pro). <b>With a hybrid head (vectors + TF-IDF) it reaches 0.790</b>, above Jev, at 6 ms per text.</span></li>
         <li><span>100 rows per dataset: ±5 points per cell, ±3 on the mean. If a bag of words solves your task, use it: <a href="https://github.com/usejul/jul#the-baseline-worth-remembering">we measured that too</a>.</span></li>
       </ul>
     </div>
@@ -826,8 +831,8 @@ latency per decision, and the answer to the ticket.</pre>
     "wemm-4b-4bit": { zs: [.857, 55, 2.6, "M5 Max"], tuned: [.897, 59, 2.6, "M5 Max"], label: "WeMM-Embedding-4B" },
     "f2llm-1.7b":   { zs: [.817, 24, 1.0, "M5 Max"], tuned: [.833, 24, 1.0, "M5 Max"], label: "F2LLM-v2-1.7B" },
     "harrier-0.6b": { zs: [.667, 13, .31, "M5 Max"], tuned: [.814, 13, .31, "M5 Max"], label: "Harrier-OSS-0.6B" },
-    "e5-small":     { zs: [.587, 22, .09, "M4 Pro"], tuned: [.670, 20, .09, "M4 Pro"], label: "multilingual-e5-small", bits: 8,
-                      extra: " With a hybrid head (vectors + TF-IDF): 0.770, above Jev." },
+    "e5-small":     { zs: [.543, 6, .09, "M4 Pro"], tuned: [.713, 5, .09, "M4 Pro"], label: "multilingual-e5-small", bits: 8,
+                      extra: " With a hybrid head (vectors + TF-IDF): 0.790, above Jev." },
     "minicpm5-2b":  { zs: [.617, 64, 2.7, "M4 Pro"], tuned: [.757, 38, 2.7, "M5 Max"], label: "MiniCPM5-2B" },
   };
   const vs = { model: "wemm-4b-4bit", mode: "zs" };
@@ -922,7 +927,7 @@ latency per decision, and the answer to the ticket.</pre>
     ["f2llm-1.7b",   .91, .67, .87, .817, .082,  24, 1.0,  [.89, .72, .89, .833, null,  24]],
     ["2b-decision",  .91, .79, .69, .796, .133, 217, 1.3,  null],
     ["harrier-0.6b", .72, .52, .76, .667, .144,  13, 0.31, [.91, .71, .83, .814, null,  13]],
-    ["e5-small",     .73, .60, .43, .587, .112,  22, 0.09, [.84, .78, .39, .670, .099,  20]],
+    ["e5-small",     .60, .60, .43, .543, .075,   6, 0.09, [.91, .83, .40, .713, .076,   5]],
     [JEV,            .91, .87, .48, .753, .156, 246, null, "same"],
     ["minicpm5-2b",  .80, .59, .46, .617, .113,  64, 2.7,  [.92, .76, .59, .757, .102,  38]],
     ["GLiNER2.5",    .70, .61, .44, .583, .101, 128, null, "same"],

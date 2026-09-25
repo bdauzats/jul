@@ -16,10 +16,14 @@ Three variants, reported separately because only the first is a fair comparison:
 Everything goes through `jul.TypeSafeClient`, never through the engine, so this measures the library
 a user would install.
 
-Usage: [JUL_BACKEND=onnx] scripts/bench_jul.py <model> [variants, comma-separated]
+JUL_BENCH_READING=direct reads every variant with the single `one_word` formulation (one pass per
+text, the preset's fitted one-word layer and tau), heads included; outputs get a `-direct` suffix.
+
+Usage: [JUL_BACKEND=onnx] [JUL_BENCH_READING=direct] scripts/bench_jul.py <model> [variants, comma-separated]
 """
 
 import json
+import os
 import sys
 import time
 from collections import defaultdict
@@ -47,6 +51,8 @@ DATASETS = {"agnews": "AG News", "banking77": "Banking77", "emotiondair": "Emoti
 QUESTION = "Which single label best describes the input text?"
 N_CONTEXT = 50          # 10 is enough, 50 is the best of the sizes tried
 OUT = ROOT / "runs" / "jev-bench-jul"
+DIRECT = os.environ.get("JUL_BENCH_READING", "") == "direct"
+TAG = f"{MODEL}-direct" if DIRECT else MODEL
 
 digest = sha256_file(MANIFEST)
 assert digest == MANIFEST_SHA256, f"manifest changed: {digest}"
@@ -67,7 +73,7 @@ for ds in DATASETS:
     assert not overlap, f"{ds}: {len(overlap)} training rows also in the benchmark"
 print("training data verified disjoint from the benchmark")
 
-client = TypeSafeClient(model=MODEL)
+client = TypeSafeClient(model=MODEL, one_word_only=DIRECT)
 results, notes = {}, {}
 
 for variant in VARIANTS:
@@ -87,7 +93,8 @@ for variant in VARIANTS:
             labeled = [(r["text"], {"label": index[r["label"]]}) for r in training_rows(ds)]
             t0 = time.perf_counter()
             features = "hybrid" if variant == "tuned-hybrid" else "vector"
-            report = client.autotune(context, questions, labeled, save=False, features=features)["label"]
+            report = client.autotune(context, questions, labeled, save=False, features=features,
+                                     formulations=["one_word"] if DIRECT else None)["label"]
             notes[f"{ds}/{variant}"] = {"activated": report.activated, "reason": report.reason,
                                     "seconds": round(time.perf_counter() - t0, 1)}
             print(f"  [{ds}] head: {'ACTIVE' if report.activated else 'refused'} — {report.reason}",
@@ -118,7 +125,8 @@ def row(name, scored, latency_ms):
             + f" | {mean('accuracy'):.3f} | {mean('ece'):.3f} | {latency_ms:.0f} ms |")
 
 
-lines = [f"# jul {MODEL} vs Jev — BTZSC pilot v1, 300 examples",
+lines = [f"# jul {MODEL} vs Jev — BTZSC pilot v1, 300 examples"
+         + (" — direct reading (one_word only)" if DIRECT else ""),
          "",
          f"Manifest `{MANIFEST_SHA256[:12]}…`, 100 rows per dataset. Cells: accuracy / ECE.",
          "Only the zero-shot row is comparable to Jev: the other two receive task data, Jev receives none.",
@@ -139,9 +147,9 @@ if notes:
     lines += ["", "Tuned heads:", ""] + [f"- `{k}`: {v['reason']} ({v['seconds']}s)" for k, v in notes.items()]
 
 report = "\n".join(lines) + "\n"
-(OUT / f"report-{MODEL}.md").write_text(report)
+(OUT / f"report-{TAG}.md").write_text(report)
 for variant, preds in results.items():
-    with open(OUT / f"{MODEL}-{variant}.jsonl", "w") as f:
+    with open(OUT / f"{TAG}-{variant}.jsonl", "w") as f:
         for p in preds:
             f.write(json.dumps(p.to_dict() if hasattr(p, "to_dict") else p.__dict__, default=str) + "\n")
 print("\n" + report)
