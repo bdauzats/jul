@@ -172,6 +172,12 @@ def classify(body: Any) -> dict:
     model = local_model(body.get("model"))
     extras = {k: body[k] for k in EXTRAS if body.get(k) is not None}
 
+    # Log state size for debugging slow requests (DEBUG to avoid leaking sensitive data)
+    state = body["state"]
+    state_str = state if isinstance(state, str) else json.dumps(state, ensure_ascii=False)
+    state_chars = len(state_str)
+    logger.debug("state: %d chars, preview: %r", state_chars, state_str[:200])
+
     client = get_client()
     start = time.time()
     try:
@@ -182,8 +188,23 @@ def classify(body: Any) -> dict:
     latency_ms = (time.time() - start) * 1000
     logger.info("systemone: %d question(s), %.0f ms", len(questions), latency_ms)
     result = response.as_dict()
+    # Log answer summary (DEBUG to avoid leaking sensitive data)
+    answers_summary = {k: _answer_summary(v) for k, v in result.get("answers", {}).items()}
+    logger.debug("answers: %s", answers_summary)
     result["jul"] = {"latency_ms": round(latency_ms, 2)}
     return result
+
+
+def _answer_summary(answer: dict) -> str:
+    """Compact summary of an answer for logging."""
+    t = answer.get("type", "?")
+    if t == "noul":
+        return f"noul={answer.get('noul', '?'):.2f}"
+    if t == "choice":
+        return f"choice={answer.get('choice', '?')} ({answer.get('confidence', 0):.0%})"
+    if t == "score":
+        return f"score={answer.get('score', '?'):.2f} ({answer.get('confidence', 0):.0%})"
+    return str(answer)
 
 
 def list_models() -> dict:
