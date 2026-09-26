@@ -2,12 +2,12 @@ name: Release
 
 # One build; the version comes from git (setuptools-scm), never from a file edited by hand:
 #
-#   push to main                  -> <next patch>.dev<commits since the last tag>, e.g. 0.1.2.dev7:
+#   push to main                  -> <next patch>.dev<commits since the last tag>, e.g. 0.2.1.dev7:
 #                                    the unstable channel, on TestPyPI (when PUBLISH_TESTPYPI is true)
-#   push of a tag v0.2.0rc1       -> 0.2.0rc1 (any pre-release: aN, bN, rcN, .devN) on TestPyPI
-#   push of a tag v0.2.0          -> 0.2.0 on PyPI
+#   push of a tag v0.3.0rc1       -> 0.3.0rc1 (any pre-release: aN, bN, rcN, .devN) on TestPyPI
+#   push of a tag v0.3.0          -> 0.3.0 on PyPI
 #
-# pip sorts 0.1.2.dev7 after 0.1.1 and before 0.1.2, and only installs it with --pre.
+# pip sorts 0.2.1.dev7 after 0.2.0 and before 0.2.1, and only installs it with --pre.
 # The same artifact is built, checked and installed in a clean environment before either upload, so
 # a broken sdist or a missing asset fails here and not in somebody's `pip install`.
 #
@@ -196,7 +196,7 @@ jobs:
   pypi:
     name: publish to PyPI
     needs: [build, smoke]
-    # a final tag pushed: v0.2.0; a manual run never uploads
+    # a final tag pushed: v0.3.0; a manual run never uploads
     if: >-
       github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') &&
       needs.build.outputs.prerelease == 'false'

@@ -7,9 +7,9 @@ continuously and publishes an unstable build; a tag cuts a release.
 
 | Trigger | Version built | Index |
 |---|---|---|
-| push to `main` | the next patch as a dev release: `0.1.2.dev7` = 7 commits after `v0.1.1` | TestPyPI, when the repo variable `PUBLISH_TESTPYPI` is `true` (the unstable channel) |
-| tag `v0.2.0rc1` (any pre-release: `aN`, `bN`, `rcN`, `.devN`) | `0.2.0rc1` | TestPyPI |
-| tag `v0.2.0` | `0.2.0` | PyPI |
+| push to `main` | the next patch as a dev release: `0.2.1.dev7` = 7 commits after `v0.2.0` | TestPyPI, when the repo variable `PUBLISH_TESTPYPI` is `true` (the unstable channel) |
+| tag `v0.3.0rc1` (any pre-release: `aN`, `bN`, `rcN`, `.devN`) | `0.3.0rc1` | TestPyPI |
+| tag `v0.3.0` | `0.3.0` | PyPI |
 | `workflow_dispatch` | as for `main` | nothing, it builds and stops |
 
 Nothing uploads until the build passes `twine check --strict`, the sdist has rebuilt the wheel on
@@ -71,9 +71,9 @@ Then, in this repo:
 ## Cutting a release
 
 1. `main` is green (and, if you like, its dev build installs from TestPyPI).
-2. Optionally a release candidate first: `git tag v0.2.0rc1 && git push origin v0.2.0rc1`, then
-   `pip install --pre -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple jul==0.2.0rc1`.
-3. Tag the release commit on `main` and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
+2. Optionally a release candidate first: `git tag v0.3.0rc1 && git push origin v0.3.0rc1`, then
+   `pip install --pre -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple jul==0.3.0rc1`.
+3. Tag the release commit on `main` and push the tag: `git tag v0.3.0 && git push origin v0.3.0`.
 4. The `pypi` job uploads. If you put a reviewer on the environment, it waits for you first. Release
    notes can be written as a GitHub release on the tag afterwards; it triggers nothing.
 
