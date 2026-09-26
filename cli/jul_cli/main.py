@@ -85,8 +85,8 @@ def read_examples(path: str | Path) -> list[str]:
 def cmd_ask(a):
     pairs = [o.split(":", 1) if ":" in o else (o, "") for o in a.option or []]
     if a.kind == "choice":
-        if len(pairs) < 2:
-            raise SystemExit("choice needs at least two -o options")
+        if len(pairs) < 1:
+            raise SystemExit("choice needs at least one -o option")
         question = Choice(instructions=a.instructions, criteria={k.strip(): v.strip() for k, v in pairs})
     elif a.kind == "noul":
         criteria = {k.strip(): v.strip() for k, v in pairs}
@@ -348,6 +348,13 @@ def cmd_lab(a):
     lab_main(a.rest)
 
 
+def cmd_serve(a):
+    """Serve the client over the Jev (System One) HTTP protocol, for non-Python callers."""
+    from jul_cli.serve import serve
+    serve(model=a.model, backend=a.backend, host=a.host, port=a.port,
+          warmup=not a.no_warmup, api_key=a.api_key)
+
+
 # --- parser -------------------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
@@ -445,6 +452,17 @@ def build_parser() -> argparse.ArgumentParser:
                    help="add, decision model: option count above which it falls back to vectors; "
                         "0 disables the routing. Default: measured (or its decision.json, if it says)")
     s.set_defaults(fn=cmd_models)
+
+    s = sub.add_parser("serve", help="serve the Jev HTTP protocol (POST /v1/systemone) locally")
+    s.add_argument("--model", **model_kw)
+    s.add_argument("--backend", **backend_kw)
+    s.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1, local only)")
+    s.add_argument("--port", type=int, default=8577, help="port (default 8577)")
+    s.add_argument("--api-key", default=None,
+                   help="require this key, as Authorization: Bearer or x-api-key (else $JUL_API_KEY). "
+                        "Recommended when binding beyond 127.0.0.1.")
+    s.add_argument("--no-warmup", action="store_true", help="do not load the model before serving")
+    s.set_defaults(fn=cmd_serve)
 
     s = sub.add_parser("lab", help="research commands")
     s.add_argument("rest", nargs=argparse.REMAINDER,

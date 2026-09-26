@@ -35,10 +35,17 @@ def test_score_levels_are_indexed_from_zero():
     assert [o.key for o in options] == ["0", "1", "2"]
 
 
-@pytest.mark.parametrize("question", [Choice(criteria={"a": "x"}), Score(criteria=["only"])])
+@pytest.mark.parametrize("question", [Score(criteria=["only"])])
 def test_a_question_needs_at_least_two_options(question):
     with pytest.raises(ValueError):
         options_of(question)
+
+
+def test_choice_accepts_single_option():
+    """TypeSafe accepts single-option Choice (e.g., CLICK actions); JuL should too."""
+    options = options_of(Choice(criteria={"click": "click the element"}))
+    assert len(options) == 1
+    assert options[0].key == "click"
 
 
 def test_state_is_serialized_once_and_strings_pass_through():

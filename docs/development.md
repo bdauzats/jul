@@ -22,7 +22,7 @@ jul/
     backends/       mlx.py (mlx-lm), torch.py (transformers), onnx.py (ONNX Runtime) and
                     onnx_export.py (the export, KV cache, 8-bit weights)
     calibration.py  temperature and per-option bias
-  cli/jul_cli/      the command line
+  cli/jul_cli/      the command line; serve.py is `jul serve`, the Jev HTTP protocol
   scripts/          data preparation, tuning experiments, the benchmark
   tests/            fast tests, plus a slow suite that loads the models
 ```

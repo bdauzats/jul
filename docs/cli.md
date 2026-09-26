@@ -17,6 +17,7 @@ jul models
 jul models add minicpm5-2b-decision --repo usejul/minicpm5-2b-decision-mlx-4bit   # a decision model
 jul models add my-model --repo org/Some-Instruct-3B                                 # fits a preset
 jul setup --model minicpm5-2b-decision    # backend, weights and one timed decision
+jul serve --model minicpm5-2b --port 8577   # the Jev HTTP protocol on 127.0.0.1, see serve.md
 ```
 
 ## File formats
