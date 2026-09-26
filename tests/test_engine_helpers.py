@@ -58,3 +58,21 @@ def test_minicpm_ships_its_generic_center():
     preset = resolve("minicpm5-2b")
     center = preset.generic_center(preset.formulations[0])
     assert center is not None and center.ndim == 1
+
+
+def test_softmax_of_a_single_option_is_certain():
+    assert softmax(np.array([0.3])).tolist() == [1.0]
+
+
+def test_softmax_refuses_a_degenerate_vector_rather_than_returning_nan():
+    import pytest
+    with pytest.raises(ValueError, match="degenerate"):
+        softmax(np.array([np.nan, 0.2]))
+
+
+def test_normalize_of_a_zero_vector_is_nan_without_a_numpy_warning():
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        out = normalize(np.array([[0.0, 0.0], [3.0, 4.0]]))
+    assert np.isnan(out[0]).all() and out[1].tolist() == [0.6, 0.8]

@@ -165,3 +165,13 @@ def test_official_jev_sdk_talks_to_it(server, monkeypatch):
     assert "jev-latest" in [m.name for m in client.models.list().models]
     with pytest.raises(T.TypeSafeAuthenticationError):
         T.TypeSafeClient(api_key="wrong", base_url=url).system_one(state="x", questions={"q": T.Noul(instructions="?")})
+
+
+def test_a_single_option_choice_is_accepted(server):
+    """Jev sets no minimum on a choice's options (a CLICK action has one)."""
+    url, fake = server
+    body = {"state": "click the button", "questions": {
+        "action": {"type": "choice", "instructions": "Which action?", "criteria": {"click": "press the button"}}}}
+    status, out = call(url + "/v1/systemone", body)
+    assert status == 200 and out["answers"]["action"]["choice"] == "click"
+    assert list(fake.calls[-1]["questions"]["action"].criteria) == ["click"]
