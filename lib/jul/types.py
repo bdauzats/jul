@@ -176,8 +176,8 @@ def options_of(question: Question) -> list[Option]:
         options = [Option(str(k), str(v)) for k, v in criteria.items()]
     else:
         options = [Option(str(c)) for c in criteria]
-    if len(options) < 2:
-        raise ValueError("A Choice needs at least two options")
+    if len(options) < 1:
+        raise ValueError("A Choice needs at least one option")
     return options
 
 

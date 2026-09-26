@@ -85,8 +85,8 @@ def read_examples(path: str | Path) -> list[str]:
 def cmd_ask(a):
     pairs = [o.split(":", 1) if ":" in o else (o, "") for o in a.option or []]
     if a.kind == "choice":
-        if len(pairs) < 2:
-            raise SystemExit("choice needs at least two -o options")
+        if len(pairs) < 1:
+            raise SystemExit("choice needs at least one -o option")
         question = Choice(instructions=a.instructions, criteria={k.strip(): v.strip() for k, v in pairs})
     elif a.kind == "noul":
         criteria = {k.strip(): v.strip() for k, v in pairs}

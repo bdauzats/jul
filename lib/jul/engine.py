@@ -16,6 +16,7 @@ default for every type, `Noul` and `Score` included, since they beat letters the
 
 from __future__ import annotations
 
+import logging
 import string
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -27,13 +28,29 @@ from .presets import Formulation, Preset
 from .types import Option
 
 LETTERS = string.ascii_uppercase
+_log = logging.getLogger(__name__)
 
 
 def normalize(a: np.ndarray) -> np.ndarray:
-    return a / np.linalg.norm(a, axis=-1, keepdims=True)
+    norm = np.linalg.norm(a, axis=-1, keepdims=True)
+    # Avoid division by zero for zero vectors (returns NaN, handled downstream by softmax)
+    if np.any(norm == 0):
+        import traceback
+        _log.debug("zero vector encountered in normalize, shape=%s, norm=%s\n%s", 
+                   a.shape, norm.ravel()[:5], ''.join(traceback.format_stack()[-5:-1]))
+    with np.errstate(invalid="ignore"):
+        return a / norm
 
 
 def softmax(z: np.ndarray) -> np.ndarray:
+    # Single option: probability is always 1.0
+    if z.size == 1:
+        return np.ones_like(z)
+    # Reject NaN inputs (e.g., from normalizing a zero vector) — caller must handle this
+    if np.any(np.isnan(z)):
+        raise ValueError("Cannot compute probabilities: state produced a degenerate vector "
+                         "(likely empty or near-identical to the center). "
+                         "Ensure the state contains meaningful text content.")
     e = np.exp(z - z.max())
     return e / e.sum()
 
@@ -167,7 +184,23 @@ class Engine:
                         else self._template(self._render(f, instructions, options), _description(context)))
             L = self.vectors(template, f.layer, [o.text for o in options])
             center = self._center(template, f, L, context)
-            passes.append(Pass(f, template, normalize(L - center), center, len(template.prefix_tokens)))
+            centered = L - center
+            # Single option: centered vector is always zero (option == center), skip normalization
+            if len(options) == 1:
+                # Use a dummy normalized vector; softmax will return [1.0] anyway
+                normalized = np.zeros_like(centered)
+            else:
+                norms = np.linalg.norm(centered, axis=-1)
+                zero_mask = norms == 0
+                if np.any(zero_mask):
+                    for i, is_zero in enumerate(zero_mask):
+                        if is_zero:
+                            _log.error("option %d has zero centered vector: key=%r, text=%r, "
+                                       "instructions=%r, kind=%s",
+                                       i, options[i].key, options[i].text[:100] if options[i].text else '',
+                                       instructions[:80], kind)
+                normalized = normalize(centered)
+            passes.append(Pass(f, template, normalized, center, len(template.prefix_tokens)))
 
         compiled = CompiledQuestion(options=options, passes=passes,
                                     shared_one_word=any("{instructions}" not in f.template
@@ -197,15 +230,36 @@ class Engine:
                 tokens += p.prompt_tokens + _state_tokens(p.template, self.backbone, state)
                 if is_shared and shared is not None:
                     shared[p.formulation.layer] = vector
-            scores.append(p.scores(vector))
-            features.append(normalize(vector - p.center))
+            centered = vector - p.center
+            centered_norm = np.linalg.norm(centered)
+            if centered_norm == 0:
+                _log.warning("zero centered vector: state_len=%d, vector_norm=%.4f, "
+                             "center_norm=%.4f, formulation=%s",
+                             len(state), np.linalg.norm(vector), np.linalg.norm(p.center),
+                             p.formulation.template[:50])
+                _log.debug("zero centered vector state preview: %r", state[:200])
+            normalized = normalize(centered)
+            scores.append(normalized @ p.centered_options.T)
+            features.append(normalized)
         return np.mean(scores, axis=0), np.concatenate(features), tokens
 
     def read_many(self, compiled: CompiledQuestion, states: list[str]) -> tuple[np.ndarray, np.ndarray]:
         """`read` for many states at once: (scores (n, K), features (n, D)), without the token count."""
         scores, features = [], []
         for p in compiled.passes:
-            centered = normalize(self.vectors(p.template, p.formulation.layer, states) - p.center)
+            vectors = self.vectors(p.template, p.formulation.layer, states)
+            centered = vectors - p.center
+            norms = np.linalg.norm(centered, axis=-1)
+            zero_mask = norms == 0
+            if np.any(zero_mask):
+                for i, is_zero in enumerate(zero_mask):
+                    if is_zero:
+                        _log.error("zero centered vector in batch[%d]: state_len=%d, "
+                                   "vector_norm=%.6f, center_norm=%.6f",
+                                   i, len(states[i]),
+                                   np.linalg.norm(vectors[i]), np.linalg.norm(p.center))
+                        _log.debug("zero centered vector batch[%d] state: %r", i, states[i][:500])
+            centered = normalize(centered)
             scores.append(centered @ p.centered_options.T)
             features.append(centered)
         return np.mean(scores, axis=0), np.concatenate(features, axis=-1)
