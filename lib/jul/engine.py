@@ -34,9 +34,9 @@ _log = logging.getLogger(__name__)
 def normalize(a: np.ndarray) -> np.ndarray:
     norm = np.linalg.norm(a, axis=-1, keepdims=True)
     # Avoid division by zero for zero vectors (returns NaN, handled downstream by softmax)
-    if np.any(norm == 0):
+    if _log.isEnabledFor(logging.DEBUG) and np.any(norm == 0):  # the stack is only built when it is logged
         import traceback
-        _log.debug("zero vector encountered in normalize, shape=%s, norm=%s\n%s", 
+        _log.debug("zero vector encountered in normalize, shape=%s, norm=%s\n%s",
                    a.shape, norm.ravel()[:5], ''.join(traceback.format_stack()[-5:-1]))
     with np.errstate(invalid="ignore"):
         return a / norm
